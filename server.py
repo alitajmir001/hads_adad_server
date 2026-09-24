@@ -12,6 +12,8 @@ import jwt
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from pydantic import BaseModel
+import os
+
 # --- تنظیمات دیتابیس ---
 SQLALCHEMY_DATABASE_URL = "sqlite:///./game_server.db"  # برای تست از SQLite استفاده شده
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
