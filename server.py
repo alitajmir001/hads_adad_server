@@ -174,7 +174,7 @@ def get_room_status(room_id: str):
     }
 
 
-SECRET_KEY = "your-super-secret-key" # حتما تغییرش بده
+SECRET_KEY = os.environ["SECRET_KEY"]
 ALGORITHM = "HS256"
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
