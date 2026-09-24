@@ -8,7 +8,10 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from fastapi import FastAPI, BackgroundTasks, HTTPException
-
+import jwt
+from datetime import datetime, timedelta
+from passlib.context import CryptContext
+from pydantic import BaseModel
 # --- تنظیمات دیتابیس ---
 SQLALCHEMY_DATABASE_URL = "sqlite:///./game_server.db"  # برای تست از SQLite استفاده شده
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
@@ -17,13 +20,29 @@ Base = declarative_base()
 
 # --- مدل‌های دیتابیس ---
 
+
+
+# تنظیمات هش کردن رمز عبور
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     phone = Column(String, unique=True, index=True)
+    password = Column(String, nullable=True) # اضافه شد: برای ذخیره هش پسورد
     wallet_balance = Column(Float, default=0.0)
     card_number = Column(String, nullable=True)
     name = Column(String, nullable=True)
+
+class OTPCode(Base):
+    __tablename__ = "otp_codes"
+    id = Column(Integer, primary_key=True, index=True)
+    phone = Column(String, index=True)
+    code = Column(String)
+    expires_at = Column(DateTime)
+
+Base.metadata.create_all(bind=engine)
+
 
 class Room(Base):
     __tablename__ = "rooms"
@@ -154,6 +173,22 @@ def get_room_status(room_id: str):
         "rounds": round_data
     }
 
+
+SECRET_KEY = "your-super-secret-key" # حتما تغییرش بده
+ALGORITHM = "HS256"
+
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
 @app.post("/admin/pay_winner")
 def admin_pay(result_id: int, card_number: str):
     """بخش ادمین برای تایید پرداخت"""
@@ -166,6 +201,95 @@ def admin_pay(result_id: int, card_number: str):
     result.payment_date = datetime.utcnow()
     db.commit()
     return {"message": "Payment marked as completed"}
+
+
+
+# مدل‌های ورودی برای درخواست‌ها
+class PhoneInput(BaseModel):
+    phone: str
+
+class VerifyCodeInput(BaseModel):
+    phone: str
+    code: str
+
+class SetPasswordInput(BaseModel):
+    phone: str
+    password: str
+    token: str # توکن موقتی که در مرحله قبل گرفتیم
+
+@app.post("/auth/request-code")
+async def request_code(data: PhoneInput):
+    db = SessionLocal()
+    # ۱. تولید کد ۴ یا ۶ رقمی
+    code = str(random.randint(1000, 9999))
+    expires = datetime.utcnow() + timedelta(minutes=2)
+    
+    # ۲. ذخیره در دیتابیس
+    new_otp = OTPCode(phone=data.phone, code=code, expires_at=expires)
+    db.add(new_otp)
+    db.commit()
+    
+    # ۳. شبیه‌سازی ارسال پیامک (در واقع اینجا باید تابع ارسال پیامک خودت را صدا بزنی)
+    print(f"--- [SMS SIMULATION] To {data.phone}: Your code is {code} ---")
+    
+    return {"message": "Code sent successfully"}
+
+@app.post("/auth/verify-code")
+async def verify_code(data: VerifyCodeInput):
+    db = SessionLocal()
+    otp = db.query(OTPCode).filter(
+        OTPCode.phone == data.phone, 
+        OTPCode.code == data.code,
+        OTPCode.expires_at > datetime.utcnow()
+    ).first()
+    
+    if not otp:
+        raise HTTPException(status_code=400, detail="Invalid or expired code")
+    
+    user = db.query(User).filter(User.phone == data.phone).first()
+    
+    # حذف کد استفاده شده
+    db.delete(otp)
+    db.commit()
+
+    if user:
+        # کاربر وجود داشت -> لاگین مستقیم (بازگشت توکن اصلی)
+        token = create_access_token({"sub": user.phone, "type": "access"})
+        return {"message": "Login successful", "access_token": token, "is_new_user": False}
+    else:
+        # کاربر وجود نداشت -> دادن توکن موقت برای مرحله ست کردن پسورد
+        temp_token = create_access_token({"sub": data.phone, "type": "registration"}, expires_delta=timedelta(minutes=5))
+        return {"message": "Code verified. Please set your password.", "registration_token": temp_token, "is_new_user": True}
+
+@app.post("/auth/set-password")
+async def set_password(data: SetPasswordInput):
+    db = SessionLocal()
+    
+    # ۱. ابتدا چک کردن اعتبار توکن موقت
+    try:
+        payload = jwt.decode(data.token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "registration":
+            raise HTTPException(status_code=400, detail="Invalid token type")
+        phone_in_token = payload.get("sub")
+    except:
+        raise HTTPException(status_code=401, detail="Invalid or expired registration token")
+
+    if phone_in_token != data.phone:
+        raise HTTPException(status_code=400, detail="Phone number mismatch")
+
+    # ۲. ساخت کاربر جدید
+    user = db.query(User).filter(User.phone == data.phone).first()
+    if user:
+        raise HTTPException(status_code=400, detail="User already exists")
+    
+    hashed_pw = get_password_hash(data.password)
+    new_user = User(phone=data.phone, password=hashed_pw)
+    db.add(new_user)
+    db.commit()
+    
+    # ۳. بازگشت توکن نهایی برای ورود
+    final_token = create_access_token({"sub": data.phone, "type": "access"})
+    return {"message": "Account created successfully", "access_token": final_token}
 
 if __name__ == "__main__":
     import uvicorn
