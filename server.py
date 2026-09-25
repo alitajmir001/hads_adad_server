@@ -218,13 +218,13 @@ class SetPasswordInput(BaseModel):
     phone: str
     password: str
     token: str # توکن موقتی که در مرحله قبل گرفتیم
-
+OTP_VALIDITY_SECONDS = 120
 @app.post("/auth/request-code")
 async def request_code(data: PhoneInput):
     db = SessionLocal()
     # ۱. تولید کد ۴ یا ۶ رقمی
     code = str(random.randint(1000, 9999))
-    expires = datetime.utcnow() + timedelta(minutes=2)
+    expires = datetime.utcnow() + timedelta(OTP_VALIDITY_SECONDS)
     
     # ۲. ذخیره در دیتابیس
     new_otp = OTPCode(phone=data.phone, code=code, expires_at=expires)
@@ -234,7 +234,9 @@ async def request_code(data: PhoneInput):
     # ۳. شبیه‌سازی ارسال پیامک (در واقع اینجا باید تابع ارسال پیامک خودت را صدا بزنی)
     print(f"--- [SMS SIMULATION] To {data.phone}: Your code is {code} ---")
     
-    return {"message": "Code sent successfully"}
+    return {"message": "Code sent successfully",
+           "expires_in": OTP_VALIDITY_SECONDS 
+            }
 
 @app.post("/auth/verify-code")
 async def verify_code(data: VerifyCodeInput):
