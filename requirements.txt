@@ -4,4 +4,6 @@ sqlalchemy
 PyJWT
 passlib[bcrypt]
 pydantic
+httpx
+python-dotenv
 
