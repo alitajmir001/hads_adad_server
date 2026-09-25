@@ -80,6 +80,36 @@ app = FastAPI()
 
 # مدیریت وضعیت روم‌ها در حافظه برای سرعت بیشتر (در کنار دیتابیس)
 active_rooms = {}
+import httpx
+
+# این همان کلیدی است که از پنل کپی کردید
+KAVENEGAR_API_KEY = "YOUR_API_KEY_HERE"
+
+async def send_sms_via_provider(phone: str, code: str):
+    # آدرس API کاوه نگار برای ارسال پیامک تک‌خطی
+    url = f"https://api.kavenegar.com/v1/messages/send/pattern/{KAVENEGAR_API_KEY}/"
+    
+    # پارامترها: 
+    # template_name: نام الگویی که در پنل ساخته‌اید (مثلاً 'otp_pattern')
+    # receiver: شماره موبایل کاربر
+    # params: متغیرهایی که در الگو جایگذاری می‌شوند (مثلاً کد)
+    payload = {
+        "receptor": phone,
+        "template": "otp_pattern", # این نام را باید در پنل کاوه نگار بسازید
+        "params": f"code:{code}"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, data=payload)
+            if response.status_code == 200:
+                print(f"پیامک با موفقیت به {phone} ارسال شد.")
+            else:
+                print(f"خطا در ارسال پیامک: {response.text}")
+        except Exception as e:
+            print(f"خطای شبکه: {e}")
+
+# حالا در FastAPI از این تابع در BackgroundTasks استفاده می‌کنید
 
 def calculate_prize(player_count: int) -> float:
     """محاسبه جایزه بر اساس تعداد بازیکنان"""
