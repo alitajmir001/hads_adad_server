@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from pydantic import BaseModel
 import os
-
+import httpx
 # --- تنظیمات دیتابیس ---
 SQLALCHEMY_DATABASE_URL = "sqlite:///./game_server.db"  # برای تست از SQLite استفاده شده
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
@@ -80,7 +80,7 @@ app = FastAPI()
 
 # مدیریت وضعیت روم‌ها در حافظه برای سرعت بیشتر (در کنار دیتابیس)
 active_rooms = {}
-import httpx
+
 
 # این همان کلیدی است که از پنل کپی کردید
 KAVENEGAR_API_KEY = "YOUR_API_KEY_HERE"
