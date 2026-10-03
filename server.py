@@ -83,33 +83,49 @@ active_rooms = {}
 
 
 # این همان کلیدی است که از پنل کپی کردید
-KAVENEGAR_API_KEY = "YOUR_API_KEY_HERE"
+
+
+# تنظیمات SMS.ir (این‌ها را در فایل .env یا متغیرهای محیطی Render قرار بده)
+import os
+import httpx
+
+# ۱. این اطلاعات را در Environment Variables پنل Render ذخیره کن
+# (در بخش Settings > Environment در داشبورد Render)
+SMS_USERNAME = os.environ.get("SMS_USERNAME")
+SMS_PASSWORD = os.environ.get("SMS_PASSWORD") # همان Secret Key است
+SMS_LINE = os.environ.get("SMS_LINE")
 
 async def send_sms_via_provider(phone: str, code: str):
-    # آدرس API کاوه نگار برای ارسال پیامک تک‌خطی
-    url = f"https://api.kavenegar.com/v1/messages/send/pattern/{KAVENEGAR_API_KEY}/"
+    url = "https://api.sms.ir/v1/send"
     
-    # پارامترها: 
-    # template_name: نام الگویی که در پنل ساخته‌اید (مثلاً 'otp_pattern')
-    # receiver: شماره موبایل کاربر
-    # params: متغیرهایی که در الگو جایگذاری می‌شوند (مثلاً کد)
-    payload = {
-        "receptor": phone,
-        "template": "otp_pattern", # این نام را باید در پنل کاوه نگار بسازید
-        "params": f"code:{code}"
+    # استفاده از دیکشنری params باعث می‌شود httpx خودش آدرس را صحیح encode کند
+    params = {
+        "username": SMS_USERNAME,
+        "password": SMS_PASSWORD,
+        "line": SMS_LINE,
+        "mobile": phone,
+        "text": f"کد تایید شما در بازی حدس عدد: {code}"
     }
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(url, data=payload)
-            if response.status_code == 200:
-                print(f"پیامک با موفقیت به {phone} ارسال شد.")
+    try:
+        async with httpx.AsyncClient() as client:
+            # ارسال درخواست (می‌توان GET یا POST استفاده کرد، در اینجا GET استفاده کردیم)
+            response = await client.get(url, params=params)
+            
+            # دریافت پاسخ (دقیقاً طبق ساختار JSON که در مستندات فرستادی)
+            data = response.json()
+            
+            if response.status_code == 200 and data.get("status") == 1:
+                print(f"پیامک با موفقیت به {phone} ارسال شد. شناسه: {data['data']['messageId']}")
+                return True
             else:
-                print(f"خطا در ارسال پیامک: {response.text}")
-        except Exception as e:
-            print(f"خطای شبکه: {e}")
+                print(f"خطا در ارسال پیامک: {data.get('message', 'خطای نامشخص')}")
+                return False
+                
+    except Exception as e:
+        print(f"خطای شبکه در ارسال پیامک: {e}")
+        return False
 
-# حالا در FastAPI از این تابع در BackgroundTasks استفاده می‌کنید
 
 def calculate_prize(player_count: int) -> float:
     """محاسبه جایزه بر اساس تعداد بازیکنان"""
