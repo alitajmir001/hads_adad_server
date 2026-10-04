@@ -77,6 +77,12 @@ Base.metadata.create_all(bind=engine)
 # --- منطق اصلی سرور ---
 
 app = FastAPI()
+@app.on_event("startup")
+async def startup_event():
+    print("--- ROUTES REGISTERED IN FASTAPI ---")
+    for route in app.routes:
+        # اینجا مسیرها رو توی کنسول لاگِ رندر چاپ میکنیم
+        print(f"Found route: {route.path} | Methods: {route.methods}")
 
 # مدیریت وضعیت روم‌ها در حافظه برای سرعت بیشتر (در کنار دیتابیس)
 active_rooms = {}
