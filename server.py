@@ -22,7 +22,7 @@ Base = declarative_base()
 
 # --- مدل‌های دیتابیس ---
 
-
+ 
 
 # تنظیمات هش کردن رمز عبور
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
