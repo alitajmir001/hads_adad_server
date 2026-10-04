@@ -308,19 +308,19 @@ async def verify_code(data: VerifyCodeInput):
     db.commit()
 
     if user:
-        # کاربر وجود داشت -> لاگین مستقیم (بازگشت توکن اصلی)
-        token = create_access_token({"sub": user.phone, "type": "access"})
-        return {"message": "Login successful", "access_token": token, "is_new_user": False}
+        # کاربر وجود داشت -> لاگین مستقیم
+        access_token = create_access_token({"sub": user.phone, "type": "access"})
+        return {"message": "Login successful", "access_token": access_token, "is_new_user": False}
     else:
-        # کاربر وجود نداشت -> دادن توکن موقت برای مرحله ست کردن پسورد
-        temp_token = create_access_token({"sub": data.phone, "type": "registration"}, expires_delta=timedelta(minutes=5))
-        return {"message": "Code verified. Please set your password.", "registration_token": temp_token, "is_new_user": True}
+        # کاربر وجود نداشت -> توکن موقت برای ثبت نام
+        registration_token = create_access_token({"sub": data.phone, "type": "registration"}, expires_delta=timedelta(minutes=5))
+        return {"message": "Code verified. Please set your password.", "registration_token": registration_token, "is_new_user": True}
 
 @app.post("/auth/set-password")
 async def set_password(data: SetPasswordInput):
     db = SessionLocal()
     
-    # ۱. ابتدا چک کردن اعتبار توکن موقت
+    # ۱. چک کردن توکن موقت
     try:
         payload = jwt.decode(data.token, SECRET_KEY, algorithms=[ALGORITHM])
         if payload.get("type") != "registration":
@@ -332,7 +332,7 @@ async def set_password(data: SetPasswordInput):
     if phone_in_token != data.phone:
         raise HTTPException(status_code=400, detail="Phone number mismatch")
 
-    # ۲. ساخت کاربر جدید
+    # ۲. ساخت کاربر
     user = db.query(User).filter(User.phone == data.phone).first()
     if user:
         raise HTTPException(status_code=400, detail="User already exists")
@@ -342,9 +342,11 @@ async def set_password(data: SetPasswordInput):
     db.add(new_user)
     db.commit()
     
-    # ۳. بازگشت توکن نهایی برای ورود
-    final_token = create_access_token({"sub": data.phone, "type": "access"})
-    return {"message": "Account created successfully", "access_token": final_token}
+    # ۳. بازگشت توکن نهایی
+    access_token = create_access_token({"sub": data.phone, "type": "access"})
+    return {"message": "Account created successfully", "access_token": access_token}
+
+
 
 if __name__ == "__main__":
     import uvicorn
