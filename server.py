@@ -105,44 +105,48 @@ import httpx
 import os
 
 # این متغیرها رو از محیط سرور می‌خونه (نه داخل کد)
-SMS_API_KEY = os.environ.get("SMS_API_KEY") # یا SMS_PASSWORD بسته به مستندات پنل شما
-SMS_LINE = os.environ.get("SMS_LINE")
+
 
 async def send_sms_via_provider(phone: str, code: str):
-    # اکثر APIهای مدرن SMS.ir از POST استفاده می‌کنند نه GET
-    url = "https://api.sms.ir/v1/send/" 
+    # این همان آدرسی است که شما فرمودید
+    url = "https://api.sms.ir/v1/send/"
     
-    # هدرها برای احراز هویت (امن‌ترین روش)
+    # حتما از Environment Variable استفاده کن (توی پنل رندر ست کن)
+    api_key = os.environ.get("SMS_API_KEY") 
+    line_number = os.environ.get("SMS_LINE")
+    
     headers = {
-        "x-api-key": SMS_API_KEY, 
-        "Content-Type": "application/json"
+        "x-api-key": api_key,
+        "Content-Type": "application/json",
+        "Accept": "text/plain"
     }
     
-    # بدنه درخواست به صورت JSON
     payload = {
-        "lineNumber": SMS_LINE,
+        "lineNumber": line_number,
         "messageText": f"کد تایید شما در بازی حدس عدد: {code}",
-        "mobiles": [phone]
+        "mobiles": [phone] # SMS.ir معمولا لیست موبایل‌ها رو به صورت آرایه میخواد
     }
 
     try:
         async with httpx.AsyncClient() as client:
-            # استفاده از POST به جای GET
+            # استفاده از متد POST (بسیار مهم!)
             response = await client.post(url, json=payload, headers=headers, timeout=10.0)
             
             data = response.json()
             
-            # چک کردن وضعیت (بر اساس مستندات SMS.ir که معمولا status 1 موفقیت است)
+            # بررسی پاسخ
             if response.status_code == 200 and data.get("status") == 1:
-                print(f"پیامک ارسال شد به {phone}")
+                print(f"پیامک با موفقیت به {phone} ارسال شد.")
                 return True
             else:
-                print(f"خطای API: {data.get('message')}")
+                # این پرینت توی لاگ رندر میفته و بهت میگه دقیقا چه خطایی داده
+                print(f"خطا در ارسال: {data.get('message')} - کد خطا: {data.get('status')}")
                 return False
                 
     except Exception as e:
-        print(f"خطای سیستمی: {e}")
+        print(f"خطای شبکه: {e}")
         return False
+
 
 
 
