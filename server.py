@@ -97,40 +97,53 @@ import httpx
 
 # ۱. این اطلاعات را در Environment Variables پنل Render ذخیره کن
 # (در بخش Settings > Environment در داشبورد Render)
-SMS_USERNAME = os.environ.get("SMS_USERNAME")
-SMS_PASSWORD = os.environ.get("SMS_PASSWORD") # همان Secret Key است
+# SMS_USERNAME = os.environ.get("SMS_USERNAME")
+# SMS_PASSWORD = os.environ.get("SMS_PASSWORD") # همان Secret Key است
+# SMS_LINE = os.environ.get("SMS_LINE")
+
+import httpx
+import os
+
+# این متغیرها رو از محیط سرور می‌خونه (نه داخل کد)
+SMS_API_KEY = os.environ.get("SMS_API_KEY") # یا SMS_PASSWORD بسته به مستندات پنل شما
 SMS_LINE = os.environ.get("SMS_LINE")
 
 async def send_sms_via_provider(phone: str, code: str):
-    url = "https://api.sms.ir/v1/send"
+    # اکثر APIهای مدرن SMS.ir از POST استفاده می‌کنند نه GET
+    url = "https://api.sms.ir/v1/send/" 
     
-    # استفاده از دیکشنری params باعث می‌شود httpx خودش آدرس را صحیح encode کند
-    params = {
-        "username": SMS_USERNAME,
-        "password": SMS_PASSWORD,
-        "line": SMS_LINE,
-        "mobile": phone,
-        "text": f"کد تایید شما در بازی حدس عدد: {code}"
+    # هدرها برای احراز هویت (امن‌ترین روش)
+    headers = {
+        "x-api-key": SMS_API_KEY, 
+        "Content-Type": "application/json"
+    }
+    
+    # بدنه درخواست به صورت JSON
+    payload = {
+        "lineNumber": SMS_LINE,
+        "messageText": f"کد تایید شما در بازی حدس عدد: {code}",
+        "mobiles": [phone]
     }
 
     try:
         async with httpx.AsyncClient() as client:
-            # ارسال درخواست (می‌توان GET یا POST استفاده کرد، در اینجا GET استفاده کردیم)
-            response = await client.get(url, params=params)
+            # استفاده از POST به جای GET
+            response = await client.post(url, json=payload, headers=headers, timeout=10.0)
             
-            # دریافت پاسخ (دقیقاً طبق ساختار JSON که در مستندات فرستادی)
             data = response.json()
             
+            # چک کردن وضعیت (بر اساس مستندات SMS.ir که معمولا status 1 موفقیت است)
             if response.status_code == 200 and data.get("status") == 1:
-                print(f"پیامک با موفقیت به {phone} ارسال شد. شناسه: {data['data']['messageId']}")
+                print(f"پیامک ارسال شد به {phone}")
                 return True
             else:
-                print(f"خطا در ارسال پیامک: {data.get('message', 'خطای نامشخص')}")
+                print(f"خطای API: {data.get('message')}")
                 return False
                 
     except Exception as e:
-        print(f"خطای شبکه در ارسال پیامک: {e}")
+        print(f"خطای سیستمی: {e}")
         return False
+
 
 
 def calculate_prize(player_count: int) -> float:
