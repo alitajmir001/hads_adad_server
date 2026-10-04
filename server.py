@@ -79,10 +79,10 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 @app.on_event("startup")
 async def startup_event():
-    print("--- ROUTES REGISTERED IN FASTAPI ---")
+    print("--- ROUTES REGISTERED ---")
     for route in app.routes:
-        # اینجا مسیرها رو توی کنسول لاگِ رندر چاپ میکنیم
-        print(f"Found route: {route.path} | Methods: {route.methods}")
+        print(f"Path: {route.path}")
+
 
 # مدیریت وضعیت روم‌ها در حافظه برای سرعت بیشتر (در کنار دیتابیس)
 active_rooms = {}
