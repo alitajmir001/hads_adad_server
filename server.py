@@ -266,9 +266,10 @@ class SetPasswordInput(BaseModel):
     token: str # توکن موقتی که در مرحله قبل گرفتیم
 OTP_VALIDITY_SECONDS = 120
 @app.post("/auth/request-code")
-async def request_code(data: PhoneInput):
+async def request_code(data: PhoneInput, background_tasks: BackgroundTasks):
     db = SessionLocal()
-    # ۱. تولید کد ۴ یا ۶ رقمی
+    
+    # ۱. تولید کد ۴ رقمی
     code = str(random.randint(1000, 9999))
     expires = datetime.utcnow() + timedelta(OTP_VALIDITY_SECONDS)
     
@@ -276,13 +277,17 @@ async def request_code(data: PhoneInput):
     new_otp = OTPCode(phone=data.phone, code=code, expires_at=expires)
     db.add(new_otp)
     db.commit()
+    db.close()
     
-    # ۳. شبیه‌سازی ارسال پیامک (در واقع اینجا باید تابع ارسال پیامک خودت را صدا بزنی)
-    print(f"--- [SMS SIMULATION] To {data.phone}: Your code is {code} ---")
+    # ۳. فراخوانی تابع واقعی ارسال پیامک (اینجا تغییر اصلی است)
+    # از background_tasks استفاده می‌کنیم تا کاربر منتظر ارسال پیامک نماند و سرعت بالا برود
+    background_tasks.add_task(send_sms_via_provider, data.phone, code)
     
-    return {"message": "Code sent successfully",
-           "expires_in": OTP_VALIDITY_SECONDS 
-            }
+    return {
+        "message": "Code sent successfully",
+        "expires_in": OTP_VALIDITY_SECONDS 
+    }
+
 
 @app.post("/auth/verify-code")
 async def verify_code(data: VerifyCodeInput):
