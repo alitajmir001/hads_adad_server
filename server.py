@@ -14,6 +14,9 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 import os
 import httpx
+from fastapi import FastAPI, Depends, HTTPException
+from sqlalchemy.orm import Session
+from . import models, database
 # --- تنظیمات دیتابیس ---
 SQLALCHEMY_DATABASE_URL = "sqlite:///./game_server.db"  # برای تست از SQLite استفاده شده
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
@@ -30,8 +33,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
-    phone = Column(String, unique=True, index=True)
-    password = Column(String, nullable=True) # اضافه شد: برای ذخیره هش پسورد
+    phone = Column(String, unique=True, index=True)   
     wallet_balance = Column(Float, default=0.0)
     card_number = Column(String, nullable=True)
     name = Column(String, nullable=True)
@@ -92,8 +94,7 @@ active_rooms = {}
 
 
 # تنظیمات SMS.ir (این‌ها را در فایل .env یا متغیرهای محیطی Render قرار بده)
-import os
-import httpx
+
 
 # ۱. این اطلاعات را در Environment Variables پنل Render ذخیره کن
 # (در بخش Settings > Environment در داشبورد Render)
@@ -101,10 +102,30 @@ import httpx
 # SMS_PASSWORD = os.environ.get("SMS_PASSWORD") # همان Secret Key است
 # SMS_LINE = os.environ.get("SMS_LINE")
 
-import httpx
-import os
+
 
 # این متغیرها رو از محیط سرور می‌خونه (نه داخل کد)
+ # مسیردهی‌ها را اصلاح کنید
+
+app = FastAPI()
+
+# تابع کمکی برای دریافت Session
+def get_db():
+    db = database.SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@app.get("/check-phone/{phone_number}")
+def check_phone(phone_number: str, db: Session = Depends(get_db)):
+    # جستجو در دیتابیس برای یافتن شماره مورد نظر
+    user = db.query(models.User).filter(models.User.phone == phone_number).first()
+    
+    if user:
+        return {"exists": True, "message": "شماره در سیستم موجود است."}
+    else:
+        return {"exists": False, "message": "شماره یافت نشد."}
 
 
 async def send_sms_via_provider(phone: str, code: str):
