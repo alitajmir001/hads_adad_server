@@ -104,6 +104,8 @@ def get_db():
 async def join_room(room_id: str, user_id: int, db: Session = Depends(get_db)):
     room = db.query(Room).filter(Room.id == room_id).first()
     user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد")
 
     if not room:
         raise HTTPException(status_code=404, detail="روم یافت نشد")
