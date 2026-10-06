@@ -4,11 +4,10 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import List, Optional
 from enum import Enum
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Table
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Table, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from fastapi import FastAPI, BackgroundTasks, HTTPException
-from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from pydantic import BaseModel
 import os
@@ -18,6 +17,8 @@ from sqlalchemy.orm import Session
 from jose import jwt
 from sqlalchemy import select
 from sqlalchemy import update
+from sqlalchemy.orm import relationship
+import uuid
 # --- تنظیمات دیتابیس ---
 SQLALCHEMY_DATABASE_URL = "sqlite:///./game_server.db"  # برای تست از SQLite استفاده شده
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
@@ -31,26 +32,94 @@ Base = declarative_base()
 # تنظیمات هش کردن رمز عبور
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
+# --- مدل‌های دیتابیس اصلاح شده ---
+
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    phone_number = Column(String, unique=True, index=True, nullable=False)
-    wallet_balance = Column(Integer, default=0) # استفاده از Integer برای جلوگیری از خطای Float
     
-    # رابطه با نشست‌ها
-    sessions = relationship("UserSession", back_populates="user")
+    id = Column(Integer, primary_key=True, index=True)
+    phone = Column(String, unique=True, index=True, nullable=False)
+    password = Column(String, nullable=True)  # برای کاربران ثبت‌نام شده
+    
+    # اصلاح شده: استفاده از Integer برای جلوگیری از خطای محاسباتی (واحد: تومان)
+    wallet_balance = Column(Integer, default=0) 
+    
+    name = Column(String, nullable=True)
+    card_number = Column(String, nullable=True)
+    
+    # روابط (Relationships)
+    sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+    transactions = relationship("Transaction", back_populates="user")
 
 class UserSession(Base):
+    """مدل جدید برای مدیریت نشست‌ها (مشابه تلگرام)"""
     __tablename__ = "user_sessions"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(Integer, ForeignKey("users.id"))
     refresh_token = Column(String, unique=True, index=True, nullable=False)
-    device_info = Column(String, nullable=True) # برای نمایش به کاربر (مثل تلگرام)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    device_info = Column(String, nullable=True) # مثلا: "iPhone 13 / iOS"
+    ip_address = Column(String, nullable=True)
+    
+    is_active = Column(Boolean, default=True) # برای قابلیت Revoke (ابطال نشست)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_used_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="sessions")
+
+class Transaction(Base):
+    """مدل برای ثبت دقیق تمام تغییرات مالی (Audit Log)"""
+    __tablename__ = "transactions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    amount = Column(Integer, nullable=False) # مثبت برای جایزه، منفی برای خرید
+    type = Column(String, nullable=False)   # "deposit", "withdraw", "purchase", "prize"
+    description = Column(Text, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="transactions")
+
+class Room(Base):
+    __tablename__ = "rooms"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    status = Column(String, default="waiting") # waiting, playing, finished, cancelled
+    
+    max_capacity = Column(Integer, default=9)
+    current_players_count = Column(Integer, default=0)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    start_time = Column(DateTime, nullable=True)
+    
+    # ذخیره لیست ID بازیکنان در دیتابیس برای امنیت بیشتر
+    player_ids = Column(Text, nullable=True) # ذخیره به صورت رشته JSON یا جداول واسط
+
+class Round(Base):
+    __tablename__ = "rounds"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    room_id = Column(String, ForeignKey("rooms.id"))
+    round_number = Column(Integer)
+    target_number = Column(Integer) # تغییر به Integer (مثلاً عدد را ضربدر 100 می‌کنیم تا اعشار حفظ شود)
+
+class GameResult(Base):
+    __tablename__ = "game_results"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    room_id = Column(String, ForeignKey("rooms.id"))
+    winner_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    prize_amount = Column(Integer, default=0)
+    admin_paid = Column(Boolean, default=False)
+    payment_date = Column(DateTime, nullable=True)
+
+
+
+
+
+   
 
 class OTPCode(Base):
     __tablename__ = "otp_codes"
@@ -62,32 +131,10 @@ class OTPCode(Base):
 
 
 
-class Room(Base):
-    __tablename__ = "rooms"
-    id = Column(String, primary_key=True, index=True) # UUID
-    status = Column(String, default="waiting") # waiting, playing, finished, cancelled
-    created_at = Column(DateTime, default=datetime.utcnow)
-    start_time = Column(DateTime, nullable=True)
-    max_capacity = Column(Integer, default=9)
-    current_players_count = Column(Integer, default=0)
 
-class Round(Base):
-    __tablename__ = "rounds"
-    id = Column(Integer, primary_key=True, index=True)
-    room_id = Column(String, ForeignKey("rooms.id"))
-    round_number = Column(Integer)
-    target_number = Column(Float) # عدد تصادفی با یک رقم اعشار
 
-class GameResult(Base):
-    __tablename__ = "game_results"
-    id = Column(Integer, primary_key=True, index=True)
-    room_id = Column(String, ForeignKey("rooms.id"))
-    winner_user_id = Column(Integer, ForeignKey("users.id"))
-    prize_amount = Column(Float)
-    admin_paid = Column(Boolean, default=False)
-    payment_date = Column(DateTime, nullable=True)
-    player_count_at_end = Column(Integer)
 
+# ایجاد جداول در دیتابیس
 Base.metadata.create_all(bind=engine)
 
 # --- منطق اصلی سرور ---
