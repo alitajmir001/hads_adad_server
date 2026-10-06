@@ -117,7 +117,7 @@ def get_db():
     finally:
         db.close()
 
-@app.post("/check-phone/{phone_number}")
+@app.get("/check-phone/{phone_number}")
 def check_phone(phone_number: str, db: Session = Depends(get_db)):
     # جستجو در دیتابیس برای یافتن شماره مورد نظر
     user = db.query(models.User).filter(models.User.phone == phone_number).first()
