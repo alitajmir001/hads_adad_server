@@ -29,7 +29,7 @@ class Room(Base):
     total_rounds_required = Column(Integer, default=5)
     total_prize_pool = Column(Numeric(12, 2), default=0.0)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    
+    game_start_time = Column(DateTime, nullable=True)
     participants = relationship("RoomParticipant", back_populates="room")
 
 class RoomParticipant(Base):
