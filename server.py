@@ -35,84 +35,70 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # --- مدل‌های دیتابیس اصلاح شده ---
 
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text, Numeric
+from sqlalchemy.orm import relationship
+
+# --- مدل‌های دیتابیس اصلاح شده بر اساس منطق بازی شما ---
+
 class User(Base):
     __tablename__ = "users"
-    
     id = Column(Integer, primary_key=True, index=True)
     phone = Column(String, unique=True, index=True, nullable=False)
-    password = Column(String, nullable=True)  # برای کاربرانی که بعداً رمز می‌گذارند
-    
-    # اصلاح شده: استفاده از Integer برای جلوگیری از خطاهای محاسباتی (واحد: تومان)
-    # همیشه مقادیر را در محاسبات ضرب در 1 (یا اگر اعشار داری در 100) انجام بده
-    wallet_balance = Column(Integer, default=0) 
-    
     name = Column(String, nullable=True)
     card_number = Column(String, nullable=True)
+    wallet_balance = Column(Numeric(12, 2), default=0) # استفاده از Numeric برای دقت مالی بالا
+    is_verified_payment = Column(Boolean, default=False) # ادمین تایید می‌کند که قبلاً پرداخت کرده یا نه
     
-    # روابط (Relationships)
-    sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+    sessions = relationship("UserSession", back_populates="user")
     transactions = relationship("Transaction", back_populates="user")
     room_participation = relationship("RoomParticipant", back_populates="user")
 
-class UserSession(Base):
-    """مدیریت نشست‌ها برای قابلیت Logout و Revoke (مشابه تلگرام)"""
-    __tablename__ = "user_sessions"
-    
+class Room(Base):
+    __tablename__ = "rooms"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(Integer, ForeignKey("users.id"))
-    refresh_token = Column(String, unique=True, index=True, nullable=False)
+    status = Column(String, default="waiting") # waiting, playing, finished
     
-    device_info = Column(String, nullable=True) # مثلا: "Android / Samsung S21"
-    ip_address = Column(String, nullable=True)
+    # مدیریت ظرفیت طبق گفته شما (مثلاً 4، 6 یا 10)
+    max_capacity = Column(Integer, nullable=False) 
+    current_players_count = Column(Integer, default=0)
     
-    is_active = Column(Boolean, default=True) # اگر False شود، کاربر فوراً از سیستم خارج می‌شود
-    created_at = Column(DateTime, default=datetime.utcnow)
-    last_used_at = Column(DateTime, default=datetime.utcnow)
+    # اطلاعات بازی
+    current_round = Column(Integer, default=1)
+    total_rounds = Column(Integer, default=4) # تعداد راندها که ادمین تعیین می‌کند
+    
+    # ذخیره عدد تصادفی راند (با دقت یک رقم اعشار)
+    # مثلا اگر عدد 123.4 باشد، این ستون آن را ذخیره می‌کند
+    current_round_target = Column(Numeric(10, 1), nullable=True) 
+    
+    # ذخیره لیست برندگان یا اطلاعات بازی برای لاگ
+    room_logs = Column(Text, nullable=True) 
 
-    user = relationship("User", back_populates="sessions")
+    participants = relationship("RoomParticipant", back_populates="room")
+
+class RoomParticipant(Base):
+    __tablename__ = "room_participants"
+    id = Column(Integer, primary_key=True, index=True)
+    room_id = Column(String, ForeignKey("rooms.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    
+    room = relationship("Room", back_populates="participants")
+    user = relationship("User", back_populates="room_participation")
 
 class Transaction(Base):
-    """Audit Log: ثبت هرگونه جابجایی پول برای جلوگیری از شکایات و خطا"""
     __tablename__ = "transactions"
-    
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    amount = Column(Integer, nullable=False) # مثبت برای جایزه، منفی برای هزینه
-    type = Column(String, nullable=False)   # "deposit", "purchase", "prize", "refill"
+    amount = Column(Numeric(12, 2), nullable=False)
+    type = Column(String, nullable=False) # "deposit", "prize", "entry_fee"
     description = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="transactions")
 
-class Room(Base):
-    """مدیریت روم‌ها در دیتابیس (به جای دیکشنری در رم)"""
-    __tablename__ = "rooms"
-    
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    status = Column(String, default="waiting") # waiting, playing, finished
-    
-    max_capacity = Column(Integer, default=9)
-    current_players_count = Column(Integer, default=0)
-    
-    # ذخیره اطلاعات فنی برای بازی
-    target_number = Column(Integer, nullable=True)
-    current_round = Column(Integer, default=1)
-    
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    participants = relationship("RoomParticipant", back_populates="room")
+# بقیه مدل‌ها مثل UserSession و OTPCode را طبق کدهای قبلی نگه دار
 
-class RoomParticipant(Base):
-    """جدول واسط برای مدیریت بازیکنان در هر روم"""
-    __tablename__ = "room_participants"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    room_id = Column(String, ForeignKey("rooms.id"))
-    user_id = Column(Integer, ForeignKey("users.id"))
-    joined_at = Column(DateTime, default=datetime.utcnow)
 
-    room = relationship("Room", back_populates="participants")
-    user = relationship("User", back_populates="room_participation")
+
 
 class GameResult(Base):
     __tablename__ = "game_results"
