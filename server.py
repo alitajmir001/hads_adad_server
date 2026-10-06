@@ -158,7 +158,7 @@ async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = G
         
         # بررسی برنده شدن (اگر راند‌های اتاق تمام شده باشد)
         room = db.query(Room).filter(Room.id == room_id).first()
-        if participant.current_progress >= 5: # یا هر تعدادی که راند‌ها هستند
+        if participant.current_progress >= room.total_rounds_required: # یا هر تعدادی که راند‌ها هستند
             room.status = "finished"
             await distribute_prize(user_id, room_id, db)
             db.commit()
