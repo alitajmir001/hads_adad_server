@@ -111,7 +111,7 @@ app = FastAPI()
 
 # تابع کمکی برای دریافت Session
 def get_db():
-    db = database.SessionLocal()
+    db = SessionLocal()
     try:
         yield db
     finally:
@@ -120,7 +120,7 @@ def get_db():
 @app.get("/check-phone/{phone_number}")
 def check_phone(phone_number: str, db: Session = Depends(get_db)):
     # جستجو در دیتابیس برای یافتن شماره مورد نظر
-    user = db.query(models.User).filter(models.User.phone == phone_number).first()
+    user = db.query(User).filter(User.phone == phone_number).first()
     
     if user:
         return {"exists": True, "message": "شماره در سیستم موجود است."}
