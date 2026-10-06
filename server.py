@@ -281,8 +281,8 @@ def get_password_hash(password):
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
-@app.post("/admin/pay_winner")
-def admin_pay(result_id: int, card_number: str):
+@app.post("/admin/pay_winner/{result_id}")
+def admin_pay(result_id: int):
     """بخش ادمین برای تایید پرداخت"""
     db = SessionLocal()
     result = db.query(GameResult).filter(GameResult.id == result_id).first()
