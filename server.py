@@ -364,35 +364,35 @@ async def verify_code(data: VerifyCodeInput):
         registration_token = create_access_token({"sub": data.phone, "type": "registration"}, expires_delta=timedelta(minutes=5))
         return {"message": "Code verified. Please set your password.", "registration_token": registration_token, "is_new_user": True}
 
-@app.post("/auth/set-password")
-async def set_password(data: SetPasswordInput):
-    db = SessionLocal()
+# @app.post("/auth/set-password")
+# async def set_password(data: SetPasswordInput):
+#     db = SessionLocal()
     
-    # ۱. چک کردن توکن موقت
-    try:
-        payload = jwt.decode(data.token, SECRET_KEY, algorithms=[ALGORITHM])
-        if payload.get("type") != "registration":
-            raise HTTPException(status_code=400, detail="Invalid token type")
-        phone_in_token = payload.get("sub")
-    except:
-        raise HTTPException(status_code=401, detail="Invalid or expired registration token")
+#     # ۱. چک کردن توکن موقت
+#     try:
+#         payload = jwt.decode(data.token, SECRET_KEY, algorithms=[ALGORITHM])
+#         if payload.get("type") != "registration":
+#             raise HTTPException(status_code=400, detail="Invalid token type")
+#         phone_in_token = payload.get("sub")
+#     except:
+#         raise HTTPException(status_code=401, detail="Invalid or expired registration token")
 
-    if phone_in_token != data.phone:
-        raise HTTPException(status_code=400, detail="Phone number mismatch")
+#     if phone_in_token != data.phone:
+#         raise HTTPException(status_code=400, detail="Phone number mismatch")
 
-    # ۲. ساخت کاربر
-    user = db.query(User).filter(User.phone == data.phone).first()
-    if user:
-        raise HTTPException(status_code=400, detail="User already exists")
+#     # ۲. ساخت کاربر
+#     user = db.query(User).filter(User.phone == data.phone).first()
+#     if user:
+#         raise HTTPException(status_code=400, detail="User already exists")
     
-    hashed_pw = get_password_hash(data.password)
-    new_user = User(phone=data.phone, password=hashed_pw)
-    db.add(new_user)
-    db.commit()
+#     hashed_pw = get_password_hash(data.password)
+#     new_user = User(phone=data.phone, password=hashed_pw)
+#     db.add(new_user)
+#     db.commit()
     
-    # ۳. بازگشت توکن نهایی
-    access_token = create_access_token({"sub": data.phone, "type": "access"})
-    return {"message": "Account created successfully", "access_token": access_token}
+#     # ۳. بازگشت توکن نهایی
+#     access_token = create_access_token({"sub": data.phone, "type": "access"})
+#     return {"message": "Account created successfully", "access_token": access_token}
 
 
 
