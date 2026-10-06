@@ -129,7 +129,7 @@ async def join_room(room_id: str, user_id: int, db: Session = Depends(get_db)):
     return {"message": "با موفقیت به روم پیوستید"}
 
 @app.post("/game/submit-answer")
-async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = Depends(get_db)
+async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = Depends(get_db)):
     # ۱. پیدا کردن شرکت‌کننده
     participant = db.query(RoomParticipant).filter(
         RoomParticipant.room_id == room_id, 
