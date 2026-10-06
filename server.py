@@ -315,7 +315,7 @@ async def request_code(data: PhoneInput, background_tasks: BackgroundTasks):
     
     # ۱. تولید کد ۴ رقمی
     code = str(random.randint(1000, 9999))
-    expires = datetime.utcnow() + timedelta(OTP_VALIDITY_SECONDS)
+    expires = datetime.utcnow() + timedelta(seconds=OTP_VALIDITY_SECONDS)
     db.query(OTPCode).filter(
     OTPCode.phone == data.phone
     ).delete()
