@@ -169,9 +169,10 @@ async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = G
     
     else:
         # کاربر غلط گفته
-        participant.is_eliminated = True
-        db.commit()
-        return {"status": "eliminated"}
-
+        return {
+        "status": "wrong_answer",
+        "current_round": current_round_num,
+        "message": "جواب اشتباه است، دوباره تلاش کنید"
+        }
 
 # سایر Endpointها مثل ساخت روم و مدیریت تایمر...
