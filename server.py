@@ -53,37 +53,29 @@ class User(Base):
     transactions = relationship("Transaction", back_populates="user")
     room_participation = relationship("RoomParticipant", back_populates="user")
 
+# --- تغییر در مدل‌ها ---
+
 class Room(Base):
     __tablename__ = "rooms"
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    status = Column(String, default="waiting") # waiting, playing, finished
-    
-    # مدیریت ظرفیت طبق گفته شما (مثلاً 4، 6 یا 10)
-    max_capacity = Column(Integer, nullable=False) 
-    current_players_count = Column(Integer, default=0)
-    total_prize_pool = Column(Numeric(12, 2), default=0.0) # اضافه شد
-    
-    # اطلاعات بازی
-    current_round = Column(Integer, default=1)
-    total_rounds = Column(Integer, default=4) # تعداد راندها که ادمین تعیین می‌کند
-    
-    # ذخیره عدد تصادفی راند (با دقت یک رقم اعشار)
-    # مثلا اگر عدد 123.4 باشد، این ستون آن را ذخیره می‌کند
-    current_round_target = Column(Numeric(10, 1), nullable=True) 
-    
-    # ذخیره لیست برندگان یا اطلاعات بازی برای لاگ
-    room_logs = Column(Text, nullable=True) 
-
-    participants = relationship("RoomParticipant", back_populates="room")
+    id = Column(String, primary_key=True)
+    status = Column(String, default="waiting")  # waiting, playing, finished
+    total_rounds_required = Column(Integer, default=5)
+    total_prize_pool = Column(Numeric(12, 2), default=0)
+    # دیگر current_round اینجا نیست!
 
 class RoomParticipant(Base):
     __tablename__ = "room_participants"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     room_id = Column(String, ForeignKey("rooms.id"))
     user_id = Column(Integer, ForeignKey("users.id"))
     
-    room = relationship("Room", back_populates="participants")
-    user = relationship("User", back_populates="room_participation")
+    # پیشرفت هر کاربر به صورت جداگانه
+    current_progress = Column(Integer, default=0) 
+    is_eliminated = Column(Boolean, default=False)
+    
+    # هدف راند فعلی برای این کاربر خاص (یا از یک تابع مرکزی گرفته شود)
+    # اما بهتر است هدف راند بر اساس شماره progress باشد
+
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -823,69 +815,43 @@ async def manage_room_lifecycle(room_id: str, db: Session):
         
         db.commit()
 @app.post("/game/submit-answer")
-async def submit_answer(
-    answer: str, 
-    user_id: int, 
-    room_id: str, 
-    db: Session = GAPGPTMASKTOKENn8tophh4cwoX0X
-):
+async def submit_answer(answer: str, user_id: int, room_id: str, db: Session):
     async with db.begin():
-        # با with_for_update قفل می‌کنیم تا اگر دو نفر همزمان جواب درست دادند، 
-        # فقط یکی به عنوان برنده ثبت شود.
+        # 1. قفل کردن روم و کاربر برای جلوگیری از Race Condition
         room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
-        user = db.query(User).filter(User.id == user_id).with_for_update().first()
-
         if not room or room.status != "playing":
-            raise HTTPException(status_code=400, detail="بازی تمام شده یا در دسترس نیست")
+            raise HTTPException(status_code=400, detail="بازی در دسترس نیست")
 
-        # پیدا کردن پیشرفت کاربر در این روم
         participant = db.query(RoomParticipant).filter(
             RoomParticipant.room_id == room_id, 
             RoomParticipant.user_id == user_id
-        ).first()
+        ).with_for_update().first()
 
-        if not participant:
-            raise HTTPException(status_code=400, detail="شما در این روم نیستید")
+        if not participant or participant.is_eliminated:
+            raise HTTPException(status_code=400, detail="شما در این رقابت شرکت ندارید")
 
-        # ۱. بررسی جواب درست بودن
-        if answer == str(room.current_round_target):
-            # کاربر جواب درست داده است، پس راند او بالا می‌رود
-            participant.current_round_progress += 1 
+        # 2. تولید عدد درست برای راند فعلی کاربر
+        # فرض می‌کنیم تابعی داریم که برای هر راند، یک عدد ثابت یا تصادفی تولید می‌کند
+        # مثلاً برای راند 1 عدد 10، برای راند 2 عدد 25 و ...
+        correct_target = get_target_for_round(participant.current_progress + 1)
+
+        # 3. بررسی جواب
+        if str(answer) == str(correct_target):
+            participant.current_progress += 1
             
-            # ۲. بررسی اینکه آیا این کاربر اولین کسی است که تمام راندها را تمام کرده؟
-            if participant.current_round_progress >= room.total_rounds_required:
-                # --- پیروزی نهایی و پایان بازی برای همه ---
-                room.status = "finished" # بازی برای همه تمام می‌شود
-                await distribute_prize(user_id, room_id, db) # جایزه به این نفر داده می‌شود
-                
-                db.commit()
-                return {
-                    "status": "winner", 
-                    "message": "تبریک! شما اولین نفر بودید که تمام راندها را تمام کردید!"
-                }
-            else:
-                # کاربر هنوز برنده نشده، اما راندش بالا رفته
-                # نکته: راندِ هدف (target) برای همه کاربران در یک روم یکی است
-                # پس ما فقط شماره راندِ خودِ کاربر را جلو می‌بریم
-                
-                # اگر راندِ هدفِ روم با راندِ پیشرفت کاربر هماهنگ نیست، هدف را آپدیت می‌کنیم
-                # (این بخش بستگی به این دارد که راند هدف را کجا ذخیره می‌کنی)
-                
-                db.commit()
-                return {
-                    "status": "round_passed", 
-                    "message": f"درست بود! به راند {participant.current_round_progress + 1} رفتید."
-                }
+            # آیا این کاربر اولین کسی است که تمام راندها را تمام کرد؟
+            if participant.current_progress >= room.total_rounds_required:
+                room.status = "finished"  # پایان بازی برای همه
+                await distribute_prize(user_id, room_id, db) # پرداخت جایزه
+                return {"status": "winner", "message": "تبریک! شما برنده شدید!"}
+            
+            return {"status": "success", "message": f"درست بود! راند {participant.current_progress} شروع شد."}
+        
         else:
-            # اگر جواب غلط بود، کاربر در این راند شکست می‌خورد 
-            # اما بازی برای بقیه (که هنوز در حال بازی هستند) ادامه دارد.
-            # در اینجا کاربر را از لیست فعال در آن روم حذف می‌کنیم یا علامت می‌زنیم
-            participant.is_eliminated = True 
-            db.commit()
-            return {
-                "status": "failed", 
-                "message": "جواب غلط بود! شما از رقابت برای این روم حذف شدید."
-            }
+            # جواب غلط = حذف از رقابت (اما بازی برای بقیه ادامه دارد)
+            participant.is_eliminated = True
+            return {"status": "eliminated", "message": "جواب غلط بود! شما از رقابت حذف شدید."}
+
 
 
 
