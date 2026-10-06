@@ -132,6 +132,21 @@ async def join_room(room_id: str, user_id: int, db: Session = Depends(get_db)):
 
 @app.post("/game/submit-answer")
 async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = Depends(get_db)):
+    # 1. پیدا کردن روم
+    room = db.query(Room).filter(Room.id == room_id).first()
+
+    if not room:
+        raise HTTPException(
+            status_code=404,
+            detail="روم یافت نشد"
+        )
+
+    # 2. بررسی وضعیت بازی
+    if room.status != "playing":
+        raise HTTPException(
+            status_code=400,
+            detail="بازی هنوز شروع نشده یا به پایان رسیده است"
+        )
     # ۱. پیدا کردن شرکت‌کننده
     participant = db.query(RoomParticipant).filter(
         RoomParticipant.room_id == room_id, 
