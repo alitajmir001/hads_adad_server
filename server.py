@@ -340,52 +340,8 @@ async def room_timer_task(room_id: str, user_ids: List[int]):
         db.commit()
     db.close()
 
-@app.post("/game/join-room")
-async def join_room(
-    user_id: int, 
-    room_id: str, 
-    db: Session = GAPGPTMASKTOKENhuimz4ij5soX0X
-):
-    # شروع یک تراکنش دیتابیسی
-    async with db.begin():
-        # ۱. پیدا کردن کاربر و قفل کردن ردیف او برای جلوگیری از Race Condition
-        # با استفاده از with_for_update، اگر درخواست دوم همزمان برسد، منتظر می‌ماند تا درخواست اول تمام شود
-        user = db.query(User).filter(User.id == user_id).with_for_update().first()
-        
-        if not user:
-            raise HTTPException(status_code=404, detail="کاربر یافت نشد")
 
-        # ۲. چک کردن موجودی
-        entry_fee = 15000
-        if user.wallet_balance < entry_fee:
-            raise HTTPException(status_code=400, detail="موجودی کافی نیست")
 
-        # ۳. پیدا کردن روم و قفل کردن آن
-        room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
-        if not room or room.status != "waiting":
-            raise HTTPException(status_code=400, detail="روم در دسترس نیست")
-
-        if room.current_players_count >= room.max_capacity:
-            raise HTTPException(status_code=400, detail="روم پر است")
-
-        # ۴. کسر پول و ثبت تراکنش (Audit Log)
-        user.wallet_balance -= entry_fee
-        
-        new_transaction = GAPGPTMASKTOKENhuimz4ij5soX1X
-            user_id=user.id,
-            amount=-entry_fee,
-            type="purchase",
-            description=f"ورود به روم {room.id}"
-        )
-        db.add(new_transaction)
-
-        # ۵. اضافه کردن کاربر به روم
-        room.current_players_count += 1
-        # (در اینجا منطق اضافه کردن کاربر به لیست بازیکنان روم را هم اضافه کن)
-        
-        # در پایان بلاک with، تراکنش به صورت خودکار Commit می‌شود
-    
-    return {"status": "success", "message": "با موفقیت وارد روم شدید"}
 @app.post("/game/claim-prize")
 async def claim_prize(
     room_id: str, 
@@ -695,7 +651,59 @@ async def refresh_session(
         raise HTTPException(status_code=401, detail="زمان توکن به پایان رسیده است")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="توکن نامعتبر است")
+@app.post("/admin/create-room")
+async def create_room(
+    max_capacity: int, 
+    total_rounds: int, 
+    db: Session = Depends(get_db)
+):
+    # ادمین روم را می‌سازد
+    new_room = Room(
+        max_capacity=max_capacity,
+        total_rounds=total_rounds,
+        status="waiting",
+        current_players_count=0
+    )
+    db.add(new_room)
+    db.commit()
+    return {"message": "روم با موفقیت ساخته شد", "room_id": new_room.id}
+@app.post("/game/join-room/{room_id}")
+async def join_room(room_id: str, user_id: int, db: Session = Depends(get_db)):
+    async with db.begin(): # شروع تراکنش اتمیک
+        # ۱. قفل کردن روم برای جلوگیری از ورود همزمان
+        room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
+        
+        if not room or room.status != "waiting":
+            raise HTTPException(status_code=400, detail="روم در دسترس نیست")
 
+        # ۲. بررسی ظرفیت
+        if room.current_players_count >= room.max_capacity:
+            raise HTTPException(status_code=400, detail="روم پر است")
+
+        # ۳. افزایش تعداد بازیکن
+        room.current_players_count += 1
+        
+        # ثبت در جدول شرکت‌کنندگان
+        participant = RoomParticipant(room_id=room.id, user_id=user_id)
+        db.add(participant)
+
+        # ۴. چک کردن اینکه آیا با این ورود، روم پر شد؟
+        if room.current_players_count == room.max_capacity:
+            room.status = "playing"
+            # تولید اولین عدد راند به محض شروع بازی
+            room.current_round_target = generate_round_number()
+            room.current_round = 1
+            
+            # در اینجا می‌توانی یک لاگ ثبت کنی که بازی شروع شد
+            room.room_logs = f"Game started at {datetime.utcnow()}"
+
+    return {"status": "success", "message": "وارد شدید - بازی شروع شد" if room.status == "playing" else "وارد شدید - منتظر بازیکنان دیگر"}
+
+import random
+
+def generate_round_number():
+    # عدد تصادفی بین 0 و 1000 با دقت یک رقم اعشار
+    return round(random.uniform(0, 1000), 1)
 
 # @app.post("/auth/set-password")
 # async def set_password(data: SetPasswordInput):
