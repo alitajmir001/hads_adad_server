@@ -9,9 +9,24 @@ from datetime import datetime, timedelta
 from jose import jwt
 import uuid
 import httpx # برای ارسال درخواست به SMS.ir
-# --- تنظیمات دیتابیس (فرض بر استفاده از MySQL طبق درخواست قبلی تو) ---
-SQLALCHEMY_DATABASE_URL = "mysql+pymysql://user:password@localhost/dbname"
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+# ۱. خواندن آدرس از محیط (Environment Variable)
+# اگر در سیستم خودتان هستید و .env ندارید، یک آدرس پیش‌فرض برای تست می‌گذاریم
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/dbname")
+# ۲. تغییر در Engine
+# در SQLite ما استفاده از check_same_thread=False داشتیم، اما در Postgres نیازی به آن نیست.
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(
+        DATABASE_URL, connect_args={"check_same_thread": False}
+    )
+else:
+    # برای PostgreSQL
+    engine = create_engine(
+        DATABASE_URL, 
+        # pool_size و max_overflow برای مدیریت بهتر تعداد اتصال‌ها در سرورهای سنگین
+        pool_size=10, 
+        max_overflow=20
+    )
+# ۳. بقیه موارد مثل قبل باقی می‌مانند
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -462,7 +477,7 @@ def setup_room_rounds(db: Session=Depends(get_db), room_id: str, total_rounds: i
 
 # --- API Endpoints ---
 
-# تابع کمکی برای دریافت DB Session
+# Dependency برای گرفتن session در مسیرها
 def get_db():
     db = SessionLocal()
     try:
