@@ -61,6 +61,7 @@ class Room(Base):
     # مدیریت ظرفیت طبق گفته شما (مثلاً 4، 6 یا 10)
     max_capacity = Column(Integer, nullable=False) 
     current_players_count = Column(Integer, default=0)
+    total_prize_pool = Column(Numeric(12, 2), default=0.0) # اضافه شد
     
     # اطلاعات بازی
     current_round = Column(Integer, default=1)
@@ -566,6 +567,51 @@ def quick_deduct(db: Session, user_id: int, amount: int):
         raise HTTPException(status_code=400, detail="Transaction failed: Insufficient funds or invalid user")
     
     return {"message": "Success"}
+async def distribute_prize(winning_user_id: int, room_id: str, db: Session):
+    """
+    محاسبه ۶۰ درصد از کل پول جمع شده و واریز به برنده
+    """
+    async with db.begin():
+        # ۱. پیدا کردن روم و برنده
+        room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
+        winner = db.query(User).filter(User.id == winning_user_id).with_for_update().first()
+
+        if not room or not winner:
+            raise HTTPException(status_code=404, detail="روم یا برنده یافت نشد")
+
+        # ۲. محاسبه مقدار جایزه (۶۰ درصد از کل پول جمع شده در روم)
+        # فرض می‌کنیم room.total_prize_pool مقدار کل پول ورودی‌هاست
+        total_pool = room.total_prize_pool
+        prize_amount = calculate_prize(total_pool) # همان تابعی که قبلاً نوشتیم
+
+        # ۳. واریز به کیف پول برنده
+        winner.wallet_balance += prize_amount
+
+        # ۴. ثبت تراکنش برای برنده
+        win_tx = Transaction(
+            user_id=winner.id,
+            amount=prize_amount,
+            type="prize",
+            description=f"جایزه برنده شدن در روم {room_id}"
+        )
+        db.add(win_tx)
+
+        # ۵. ثبت تراکنش برای خودت (کمیسیون ۴۰ درصد - اختیاری اما برای گزارش مالی عالی است)
+        commission_amount = total_pool - prize_amount
+        admin_tx = Transaction(
+            user_id=0, # یا یک ID ثابت برای ادمین/سیستم
+            amount=commission_amount,
+            type="commission",
+            description=f"کمیسیون روم {room_id}"
+        )
+        db.add(admin_tx)
+
+        # ۶. بستن روم
+        room.status = "finished"
+        room.room_logs = f"بازی تمام شد. برنده: {winner.name}. جایزه: {prize_amount}"
+        
+        db.commit()
+        return prize_amount
 
 @app.post("/auth/verify-code")
 
@@ -677,77 +723,171 @@ async def create_room(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"خطا در ساخت روم: {str(e)}")
+# --- اصلاح شده برای سناریوی تو ---
+
 @app.post("/game/join-room/{room_id}")
 async def join_room(
     room_id: str, 
-    user_id: int, # این مقدار باید از JWT استخراج شود (در مرحله بعد)
-    db: Session = Depends(get_db)
+    user_id: int, 
+    db: Session = GAPGPTMASKTOKEN2br336wal9lX0X,
+    background_tasks: BackgroundTasks = Depends()
 ):
-    """ورود کاربر به روم با مدیریت خودکار شروع بازی و جلوگیری از Race Condition"""
-    async with db.begin(): # شروع تراکنش برای تضمین امنیت مالی و وضعیت
-        # ۱. پیدا کردن و قفل کردن ردیف روم
+    async with db.begin():
         room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
+        user = db.query(User).filter(User.id == user_id).with_for_update().first()
 
-        if not room:
-            raise HTTPException(status_code=404, detail="روم یافت نشد")
-        
+        if not room or not user:
+            raise HTTPException(status_code=404, detail="روم یا کاربر یافت نشد")
+
         if room.status != "waiting":
-            raise HTTPException(status_code=400, detail="این روم در حال حاضر در حال بازی است یا تمام شده است")
+            raise HTTPException(status_code=400, detail="روم در حال بازی است")
+
+        # --- بخش مورد نظر تو: فقط چک کردن، نه کسر کردن ---
+        entry_fee = 10000
+        if user.wallet_balance < entry_fee:
+            raise HTTPException(status_code=400, detail="موجودی شما برای ورود به این روم کافی نیست (حداقل 10,000 تومان)")
+        # --------------------------------------------------
 
         if room.current_players_count >= room.max_capacity:
             raise HTTPException(status_code=400, detail="روم پر است")
 
-        # ۲. بررسی وجود کاربر و موجودی (فرض بر این است که کاربر قبلاً ثبت‌نام کرده)
-        user = db.query(User).filter(User.id == user_id).with_for_update().first()
-        if not user:
-            raise HTTPException(status_code=404, detail="کاربر یافت نشد")
+        # ثبت عضویت (بدون کسر پول در این مرحله)
+        new_participant = RoomParticipant(room_id=room.id, user_id=user.id)
+        db.add(new_participant)
+        room.current_players_count += 1
+        
+        db.commit()
 
-        # ۳. بررسی اینکه آیا کاربر قبلاً در این روم بوده یا خیر
-        already_in = db.query(RoomParticipant).filter(
+        # شروع تایمر پس‌زمینه (فقط اگر اولین نفر باشد یا برای مدیریت چرخه)
+        # نکته: در دنیای واقعی بهتر است با یک Flag در دیتابیس چک کنیم که تایمر دوبار اجرا نشود
+        if room.current_players_count == 1:
+            background_tasks.add_task(manage_room_lifecycle, room_id, db)
+
+    return {"status": "success", "message": "با موفقیت وارد شدید. منتظر شروع بازی باشید..."}
+
+
+async def manage_room_lifecycle(room_id: str, db: Session):
+    """مدیریت تایمر، کسر پول و شروع رسمی بازی"""
+    await asyncio.sleep(120) # تایمر ۲ دقیقه
+
+    async with db.begin():
+        room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
+        
+        if not room or room.status != "waiting":
+            return
+
+        # ۱. بررسی تعداد بازیکنان
+        if room.current_players_count < 2:
+            room.status = "cancelled"
+            room.room_logs = "تعداد بازیکنان کافی نبود."
+            db.commit()
+            return
+
+        # ۲. کسر پول از همه بازیکنان در لحظه شروع (اینجا جدی می‌شود!)
+        participants = db.query(RoomParticipant).filter(RoomParticipant.room_id == room_id).all()
+        total_collected = 0
+        entry_fee = 10000
+        valid_user_ids = []
+
+        for p in participants:
+            user = db.query(User).filter(User.id == p.user_id).with_for_update().first()
+            
+            # چک می‌کنیم آیا هنوز هم پول دارد؟ (ممکن است در این ۲ دقیقه خرج کرده باشد)
+            if user and user.wallet_balance >= entry_fee:
+                user.wallet_balance -= entry_fee
+                total_collected += entry_fee
+                
+                # ثبت تراکنش
+                tx = Transaction(user_id=user.id, amount=-entry_fee, type="entry_fee", description=f"پرداخت ورودی روم {room_id}")
+                db.add(tx)
+                valid_user_ids.append(user.id)
+            else:
+                # اگر پول نداشت، از لیست بازیکنان حذف می‌شود
+                # در اینجا باید از دیتابیس Participant هم پاک شود
+                db.query(RoomParticipant).filter(RoomParticipant.room_id == room_id, RoomParticipant.user_id == user.id).delete()
+                room.current_players_count -= 1
+
+        # ۳. بررسی مجدد تعداد پس از کسر پول
+        if room.current_players_count < 2:
+            room.status = "cancelled"
+            room.room_logs = "به دلیل عدم موجودی کافی برخی بازیکنان، بازی لغو شد."
+            db.commit()
+            return
+
+        # ۴. شروع بازی و محاسبه پول‌ها
+        room.status = "playing"
+        room.current_round = 1
+        room.current_round_target = generate_round_number()
+        room.total_prize_pool = total_collected # ذخیره کل پول برای تقسیم در پایان
+        room.room_logs = f"بازی شروع شد. کل پول جمع شده: {total_collected}"
+        
+        db.commit()
+@app.post("/game/submit-answer")
+async def submit_answer(
+    answer: str, 
+    user_id: int, 
+    room_id: str, 
+    db: Session = GAPGPTMASKTOKENn8tophh4cwoX0X
+):
+    async with db.begin():
+        # با with_for_update قفل می‌کنیم تا اگر دو نفر همزمان جواب درست دادند، 
+        # فقط یکی به عنوان برنده ثبت شود.
+        room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
+        user = db.query(User).filter(User.id == user_id).with_for_update().first()
+
+        if not room or room.status != "playing":
+            raise HTTPException(status_code=400, detail="بازی تمام شده یا در دسترس نیست")
+
+        # پیدا کردن پیشرفت کاربر در این روم
+        participant = db.query(RoomParticipant).filter(
             RoomParticipant.room_id == room_id, 
             RoomParticipant.user_id == user_id
         ).first()
-        
-        if already_in:
-            raise HTTPException(status_code=400, detail="شما قبلاً در این روم عضو شده‌اید")
 
-        # ۴. عملیات مالی (مثلاً مبلغ ورودی)
-        entry_fee = 10000 # مبلغ فرضی
-        if user.wallet_balance < entry_fee:
-            raise HTTPException(status_code=400, detail="موجودی کافی نیست")
+        if not participant:
+            raise HTTPException(status_code=400, detail="شما در این روم نیستید")
 
-        user.wallet_balance -= entry_fee
-        
-        # ثبت تراکنش مالی
-        new_tx = Transaction(
-            user_id=user.id,
-            amount=-entry_fee,
-            type="entry_fee",
-            description=f"ورود به روم {room_id}"
-        )
-        db.add(new_tx)
+        # ۱. بررسی جواب درست بودن
+        if answer == str(room.current_round_target):
+            # کاربر جواب درست داده است، پس راند او بالا می‌رود
+            participant.current_round_progress += 1 
+            
+            # ۲. بررسی اینکه آیا این کاربر اولین کسی است که تمام راندها را تمام کرده؟
+            if participant.current_round_progress >= room.total_rounds_required:
+                # --- پیروزی نهایی و پایان بازی برای همه ---
+                room.status = "finished" # بازی برای همه تمام می‌شود
+                await distribute_prize(user_id, room_id, db) # جایزه به این نفر داده می‌شود
+                
+                db.commit()
+                return {
+                    "status": "winner", 
+                    "message": "تبریک! شما اولین نفر بودید که تمام راندها را تمام کردید!"
+                }
+            else:
+                # کاربر هنوز برنده نشده، اما راندش بالا رفته
+                # نکته: راندِ هدف (target) برای همه کاربران در یک روم یکی است
+                # پس ما فقط شماره راندِ خودِ کاربر را جلو می‌بریم
+                
+                # اگر راندِ هدفِ روم با راندِ پیشرفت کاربر هماهنگ نیست، هدف را آپدیت می‌کنیم
+                # (این بخش بستگی به این دارد که راند هدف را کجا ذخیره می‌کنی)
+                
+                db.commit()
+                return {
+                    "status": "round_passed", 
+                    "message": f"درست بود! به راند {participant.current_round_progress + 1} رفتید."
+                }
+        else:
+            # اگر جواب غلط بود، کاربر در این راند شکست می‌خورد 
+            # اما بازی برای بقیه (که هنوز در حال بازی هستند) ادامه دارد.
+            # در اینجا کاربر را از لیست فعال در آن روم حذف می‌کنیم یا علامت می‌زنیم
+            participant.is_eliminated = True 
+            db.commit()
+            return {
+                "status": "failed", 
+                "message": "جواب غلط بود! شما از رقابت برای این روم حذف شدید."
+            }
 
-        # ۵. ثبت عضویت کاربر در روم
-        new_participant = RoomParticipant(room_id=room.id, user_id=user.id)
-        db.add(new_participant)
 
-        # ۶. به‌روزرسانی شمارنده بازیکنان
-        room.current_players_count += 1
-
-        # ۷. شروع خودکار بازی اگر ظرفیت پر شد
-        if room.current_players_count == room.max_capacity:
-            room.status = "playing"
-            room.current_round = 1
-            room.current_round_target = generate_round_number() # تولید اولین عدد اعشاری
-            room.room_logs = f"Game started with target: {room.current_round_target}"
-
-    return {
-        "status": "success", 
-        "message": "با موفقیت وارد شدید", 
-        "is_game_started": room.status == "playing"
-    }
-
-import random
 
 def generate_round_number():
     # عدد تصادفی بین 0 و 1000 با دقت یک رقم اعشار
