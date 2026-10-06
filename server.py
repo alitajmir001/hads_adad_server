@@ -73,8 +73,9 @@ async def distribute_prize(winner_id: int, room_id: str, db: Session):
     winner = db.query(User).filter(User.id == winner_id).first()
     
     if room and winner:
-        prize_amount = room.total_prize_pool * 0.6  # ۶۰ درصد برای برنده
+        prize_amount = ((room.total_prize_pool // 100)*60)  # ۶۰ درصد برای برنده
         winner.balance += prize_amount
+        db.commit()
         # ۴۰ درصد باقی‌مانده به عنوان کارمزد سیستم در دیتابیس باقی می‌ماند
         print(f"Winner {winner_id} received {prize_amount}")
 # فرض کن این تابع هنگام ساخت اتاق اجرا می‌شود
@@ -151,7 +152,7 @@ async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = D
     participant = db.query(RoomParticipant).filter(
         RoomParticipant.room_id == room_id, 
         RoomParticipant.user_id == user_id
-    ).with_for_update().first()
+    ).first()
 
     if not participant or participant.is_eliminated:
         raise HTTPException(status_code=400, detail="شما در رقابت نیستید")
