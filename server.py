@@ -44,6 +44,15 @@ class RoomParticipant(Base):
     
     room = relationship("Room", back_populates="participants")
     user = relationship("User")
+class RoomRound(Base):
+    """ذخیره اعداد درست برای هر راند در هر اتاق"""
+    __tablename__ = "room_rounds"
+    id = Column(Integer, primary_key=True, index=True)
+    room_id = Column(String, ForeignKey("rooms.id"))
+    round_number = Column(Integer) # شماره راند (۱، ۲، ۳، ...)
+    correct_answer = Column(Integer) # عدد درست برای این راند
+
+    room = relationship("Room")
 
 # --- توابع کمکی (Helper Functions) ---
 
@@ -68,6 +77,18 @@ async def distribute_prize(winner_id: int, room_id: str, db: Session):
         winner.balance += prize_amount
         # ۴۰ درصد باقی‌مانده به عنوان کارمزد سیستم در دیتابیس باقی می‌ماند
         print(f"Winner {winner_id} received {prize_amount}")
+# فرض کن این تابع هنگام ساخت اتاق اجرا می‌شود
+def setup_room_rounds(db: Session, room_id: str, total_rounds: int):
+    for r in range(1, total_rounds + 1):
+        # اینجا می‌توانی اعداد را از یک لیست مشخص یا تصادفی برداری
+        correct_val = random.randint(1, 100) 
+        new_round = RoomRound(
+            room_id=room_id, 
+            round_number=r, 
+            correct_answer=correct_val
+        )
+        db.add(new_round)
+    db.commit()
 
 # --- API Endpoints ---
 
@@ -108,50 +129,49 @@ async def join_room(room_id: str, user_id: int, db: Session = Depends(get_db)):
     return {"message": "با موفقیت به روم پیوستید"}
 
 @app.post("/game/submit-answer")
-async def submit_answer(answer: str, user_id: int, room_id: str, db: Session = Depends(get_db)):
-    # استفاده از with_for_update برای جلوگیری از تداخل در لحظه برنده شدن
-    async with db.begin():
-        room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
+async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = GAPGPTMASKTOKEN50vwxbiihdeX0X
+    # ۱. پیدا کردن شرکت‌کننده
+    participant = db.query(RoomParticipant).filter(
+        RoomParticipant.room_id == room_id, 
+        RoomParticipant.user_id == user_id
+    ).with_for_update().first()
+
+    if not participant or participant.is_eliminated:
+        raise HTTPException(status_code=400, detail="شما در رقابت نیستید")
+
+    # ۲. پیدا کردن راند فعلی کاربر
+    current_round_num = participant.current_progress + 1
+
+    # ۳. مراجعه به جدول RoomRound برای پیدا کردن جواب درست
+    correct_round_data = db.query(RoomRound).filter(
+        RoomRound.room_id == room_id,
+        RoomRound.round_number == current_round_num
+    ).first()
+
+    if not correct_round_data:
+        raise HTTPException(status_code=404, detail="راند یافت نشد")
+
+    # ۴. چک کردن جواب کاربر با جواب ذخیره شده در دیتابیس
+    if answer == correct_round_data.correct_answer:
+        # کاربر درست گفته!
+        participant.current_progress += 1
         
-        if not room or room.status != "playing":
-            raise HTTPException(status_code=400, detail="بازی در دسترس نیست یا تمام شده است")
-
-        participant = db.query(RoomParticipant).filter(
-            RoomParticipant.room_id == room_id, 
-            RoomParticipant.user_id == user_id
-        ).with_for_update().first()
-
-        if not participant or participant.is_eliminated:
-            raise HTTPException(status_code=400, detail="شما در این رقابت حضور ندارید یا حذف شده‌اید")
-
-        # محاسبه هدف راند فعلی کاربر
-        # راند کاربر از ۰ شروع می‌شود، پس برای راند اول (راند ۱) باید target را بگیریم
-        current_round_number = participant.current_progress + 1
-        correct_target = get_target_for_round(current_round_number)
-
-        if str(answer) == str(correct_target):
-            # --- کاربر پاسخ درست داده است ---
-            participant.current_progress += 1
-            
-            # بررسی اینکه آیا این کاربر اولین کسی است که تمام راندها را تمام کرده؟
-            if participant.current_progress >= room.total_rounds_required:
-                room.status = "finished"  # پایان بازی برای همه
-                await distribute_prize(user_id, room_id, db)
-                db.commit()
-                return {"status": "champion", "message": "تبریک! شما اولین نفر بودید که برنده شدید!"}
-            
+        # بررسی برنده شدن (اگر راند‌های اتاق تمام شده باشد)
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if participant.current_progress >= 5: # یا هر تعدادی که راند‌ها هستند
+            room.status = "finished"
+            await distribute_prize(user_id, room_id, db)
             db.commit()
-            return {
-                "status": "round_passed", 
-                "message": f"درست بود! وارد راند {participant.current_progress + 1} شدید."
-            }
-        else:
-            # --- کاربر پاسخ غلط داده است ---
-            participant.is_eliminated = True
-            db.commit()
-            return {
-                "status": "eliminated", 
-                "message": "جواب غلط بود! شما از رقابت حذف شدید."
-            }
+            return {"status": "winner"}
+        
+        db.commit()
+        return {"status": "success", "next_round": participant.current_progress + 1}
+    
+    else:
+        # کاربر غلط گفته
+        participant.is_eliminated = True
+        db.commit()
+        return {"status": "eliminated"}
+
 
 # سایر Endpointها مثل ساخت روم و مدیریت تایمر...
