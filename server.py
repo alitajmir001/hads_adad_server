@@ -8,7 +8,6 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from fastapi import FastAPI, BackgroundTasks, HTTPException
-import jwt
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from pydantic import BaseModel
@@ -16,7 +15,9 @@ import os
 import httpx
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
-
+from jose import jwt
+from sqlalchemy import select
+from sqlalchemy import update
 # --- تنظیمات دیتابیس ---
 SQLALCHEMY_DATABASE_URL = "sqlite:///./game_server.db"  # برای تست از SQLite استفاده شده
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
@@ -33,10 +34,23 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
-    phone = Column(String, unique=True, index=True)   
-    wallet_balance = Column(Float, default=0.0)
-    card_number = Column(String, nullable=True)
-    name = Column(String, nullable=True)
+    phone_number = Column(String, unique=True, index=True, nullable=False)
+    wallet_balance = Column(Integer, default=0) # استفاده از Integer برای جلوگیری از خطای Float
+    
+    # رابطه با نشست‌ها
+    sessions = relationship("UserSession", back_populates="user")
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    refresh_token = Column(String, unique=True, index=True, nullable=False)
+    device_info = Column(String, nullable=True) # برای نمایش به کاربر (مثل تلگرام)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", back_populates="sessions")
 
 class OTPCode(Base):
     __tablename__ = "otp_codes"
@@ -45,7 +59,7 @@ class OTPCode(Base):
     code = Column(String)
     expires_at = Column(DateTime)
 
-Base.metadata.create_all(bind=engine)
+
 
 
 class Room(Base):
@@ -109,6 +123,56 @@ active_rooms = {}
 
 
 
+SECRET_KEY = "secret-your_super_secret_key"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 15
+REFRESH_TOKEN_EXPIRE_DAYS = 30
+
+def create_tokens(user_id: int, db: Session, device_info: str = None):
+    # ۱. تولید Access Token (کوتاه مدت)
+    access_expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = jwt.encode(
+        {"sub": str(user_id), "exp": access_expire, "type": "access"}, 
+        SECRET_KEY, algorithm=ALGORITHM
+    )
+
+    # ۲. تولید Refresh Token (بلند مدت و منحصربه‌فرد)
+    refresh_token_str = secrets.token_urlsafe(32)
+    refresh_expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    
+    # ذخیره Refresh Token در توکن (برای اینکه در مرحله Refresh چک شود)
+    # اما برای امنیت بالاتر، ما خودِ رشته تصادفی را در دیتابیس ذخیره می‌کنیم
+    
+    # ۳. ثبت نشست جدید در دیتابیس
+    new_session = UserSession(
+        user_id=user_id,
+        refresh_token=refresh_token_str,
+        device_info=device_info,
+        is_active=True
+    )
+    db.add(new_session)
+    db.commit()
+    db.refresh(new_session)
+
+    return access_token, refresh_token_str
+@app.post("/auth/refresh")
+def refresh_access_token(refresh_token: str, db: Session = GAPGPTMASKTOKEN5dnn091tv7dX0X):
+    try:
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+            
+        phone = payload.get("sub")
+        # اینجا می‌توانید در دیتابیس چک کنید که آیا این Refresh Token باطل شده یا نه (بسیار مهم برای امنیت)
+        
+        # اگر همه چیز اوکی بود، Access Token جدید بده
+        new_access_token, _ = create_tokens(phone)
+        return {"access_token": new_access_token}
+        
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Refresh token expired or invalid. Please login again.")
+
+
 # تابع کمکی برای دریافت Session
 def get_db():
     db = SessionLocal()
@@ -168,6 +232,28 @@ async def send_sms_via_provider(phone: str, code: str):
         print(f"خطای شبکه: {e}")
         return False
 
+@app.get("/auth/sessions")
+def get_my_sessions(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # نمایش تمام نشست‌های فعال کاربر
+    sessions = db.query(UserSession).filter(UserSession.user_id == current_user.id).all()
+    return sessions
+
+@app.post("/auth/sessions/terminate/{session_id}")
+def terminate_session(session_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # پیدا کردن نشست مورد نظر
+    session = db.query(UserSession).filter(
+        UserSession.id == session_id, 
+        UserSession.user_id == current_user.id
+    ).first()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # باطل کردن نشست (مثل تلگرام)
+    session.is_active = False
+    db.commit()
+    
+    return {"message": "Session terminated successfully. If this was a hacker, they are now kicked out!"}
 
 
 
@@ -248,7 +334,54 @@ async def join_room(user_phone: str, background_tasks: BackgroundTasks):
         return {"message": "Joined successfully", "room_id": room.id}
     
     return {"message": "Room full, please wait for next one."}
+router = APIRouter()
 
+@router.post("/auth/register")
+def register_user(
+    data: RegistrationInput, # شامل phone و اطلاعات دیگر
+    current_temp_user: access_token, # توکن موقتی که در مرحله verify-code گرفتی
+    db: Session = Depends(get_db)):,
+    device_info: str = "Unknown Device"
+):
+    # ۱. ابتدا توکن موقت را چک کن تا مطمئن شویم کاربر مرحله OTP را رد کرده است
+    # (این مرحله امنیت را تضمین می‌کند که کسی نتواند مستقیم ثبت‌نام کند)
+    try:
+        payload = jwt.decode(current_temp_user, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "registration":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+        phone_from_token = payload.get("sub")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Registration token expired or invalid")
+
+    # ۲. چک کردن اینکه آیا کاربر قبلاً ثبت‌نام کرده یا نه
+    existing_user = db.query(User).filter(User.phone == phone_from_token).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="User already exists")
+
+    # ۳. ساخت کاربر جدید در دیتابیس
+    new_user = User(
+        phone = phone_from_token,
+        username = data.username,
+        # سایر فیلدها...
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    # ۴. مرحله طلایی: تولید توکن‌های اصلی و ثبت نشست (Session)
+    # اینجا همان جایی است که کاربر رسماً وارد بازی می‌شود و "ردپا" در دیتابیس می‌ماند
+    access_token, refresh_token = create_tokens(
+        user_id=new_user.id, 
+        db=db, 
+        device_info=device_info
+    )
+
+    return {
+        "message": "Registration successful",
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "is_new_user": False
+    }
 @app.get("/room_status/{room_id}")
 def get_room_status(room_id: str):
     db = SessionLocal()
@@ -264,6 +397,41 @@ def get_room_status(room_id: str):
         "players": room.current_players_count,
         "rounds": round_data
     }
+
+
+def process_purchase(db: Session, user_id: int, amount: int):
+    try:
+        # ۱. شروع یک تراکنش (Transaction)
+        # استفاده از with_for_update باعث می‌شود این ردیف در دیتابیس قفل شود
+        user = db.query(User).filter(User.id == user_id).with_for_update().first()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # ۲. چک کردن موجودی (حالا کاملاً امن است چون ردیف قفل شده)
+        if user.wallet_balance < amount:
+            raise HTTPException(status_code=400, detail="Insufficient balance")
+
+        # ۳. کسر مبلغ
+        user.wallet_balance -= amount
+        
+        # ۴. ثبت تاریخچه تراکنش (حتماً برای Audit Log لازم است)
+        new_transaction = Transaction(
+            user_id=user.id,
+            amount=-amount,
+            type="purchase",
+            description="Buying game item"
+        )
+        db.add(new_transaction)
+
+        # ۵. تایید نهایی (Commit) - در این لحظه قفل باز می‌شود
+        db.commit()
+        return {"message": "Purchase successful", "new_balance": user.wallet_balance}
+
+    except Exception as e:
+        # اگر هر مشکلی پیش بیاید، همه چیز به حالت اول برمی‌گردد
+        db.rollback()
+        raise e
 
 
 SECRET_KEY = os.environ["SECRET_KEY"]
@@ -337,32 +505,69 @@ async def request_code(data: PhoneInput, background_tasks: BackgroundTasks):
     }
 
 
+
+def quick_deduct(db: Session, user_id: int, amount: int):
+    # این دستور در سطح دیتابیس انجام می‌شود: 
+    # UPDATE users SET wallet_balance = wallet_balance - amount WHERE id = user_id AND wallet_balance >= amount
+    result = db.execute(
+        update(User)
+        .where(User.id == user_id)
+        .where(User.wallet_balance >= amount)
+        .values(wallet_balance=User.wallet_balance - amount)
+    )
+    db.commit()
+
+    if result.rowcount == 0:
+        # اگر ردیف آپدیت نشد، یعنی یا کاربر نبود یا موجودی کافی نبود
+        raise HTTPException(status_code=400, detail="Transaction failed: Insufficient funds or invalid user")
+    
+    return {"message": "Success"}
+
 @app.post("/auth/verify-code")
-async def verify_code(data: VerifyCodeInput):
-    db = SessionLocal()
-    otp = db.query(OTPCode).filter(
+async def verify_code(data: VerifyCodeInput, device_info: str = "Unknown Device", db: Session = GAPGPTMASKTOKENh4rp0fr0kybX0X
+    # ۱. چک کردن اعتبار OTP در دیتابیس
+    otp_record = db.query(OTPCode).filter(
         OTPCode.phone == data.phone, 
         OTPCode.code == data.code,
         OTPCode.expires_at > datetime.utcnow()
     ).first()
     
-    if not otp:
+    if not otp_record:
         raise HTTPException(status_code=400, detail="Invalid or expired code")
     
-    user = db.query(User).filter(User.phone == data.phone).first()
-    
-    # حذف کد استفاده شده
-    db.delete(otp)
+    # ۲. حذف کد استفاده شده برای جلوگیری از Replay Attack
+    db.delete(otp_record)
     db.commit()
 
+    # ۳. پیدا کردن کاربر
+    user = db.query(User).filter(User.phone == data.phone).first()
+
     if user:
-        # کاربر وجود داشت -> لاگین مستقیم
-        access_token = create_access_token({"sub": user.phone, "type": "access"})
-        return {"message": "Login successful", "access_token": access_token, "is_new_user": False}
+        # --- سناریوی اول: کاربر قدیمی است (Login) ---
+        # تولید توکن‌های جفت (Access + Refresh) و ثبت نشست در دیتابیس
+        GAPGPTMASKTOKENh4rp0fr0kybX1X, GAPGPTMASKTOKENh4rp0fr0kybX2X = GAPGPTMASKTOKENh4rp0fr0kybX3X, db, device_info)
+        
+        return {
+            "message": "Login successful",
+            "GAPGPTMASKTOKENh4rp0fr0kybX4X": GAPGPTMASKTOKENh4rp0fr0kybX5X,
+            "GAPGPTMASKTOKENh4rp0fr0kybX6X": GAPGPTMASKTOKENh4rp0fr0kybX7X,
+            "is_new_user": False
+        }
     else:
-        # کاربر وجود نداشت -> توکن موقت برای ثبت نام
-        registration_token = create_access_token({"sub": data.phone, "type": "registration"}, expires_delta=timedelta(minutes=5))
-        return {"message": "Code verified. Please set your password.", "registration_token": registration_token, "is_new_user": True}
+        # --- سناریوی دوم: کاربر جدید است (Registration) ---
+        # در اینجا ما هنوز کاربر را در جدول User نمی‌سازیم، 
+        # بلکه یک توکن موقت (Temporary Token) می‌دهیم تا مرحله بعدی (تعیین نام/رمز) را طی کند.
+        
+        temp_token_expire = datetime.utcnow() + timedelta(minutes=5)
+        GAPGPTMASKTOKENh4rp0fr0kybX8X = GAPGPTMASKTOKENh4rp0fr0kybX9X"sub": data.phone, "type": "registration", "exp": temp_token_expire}, 
+        SECRET_KEY, algorithm=ALGORITHM)
+        
+        return {
+            "message": "Code verified. Please complete your registration.",
+            "GAPGPTMASKTOKENh4rp0fr0kybX10X": GAPGPTMASKTOKENh4rp0fr0kybX11X,
+            "is_new_user": True
+        }
+
 
 # @app.post("/auth/set-password")
 # async def set_password(data: SetPasswordInput):
