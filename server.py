@@ -1,227 +1,77 @@
-import uuid
-import random
-import asyncio
-from datetime import datetime, timedelta
+import datetime
 from typing import List, Optional
-from enum import Enum
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Table, Text
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Numeric, DateTime
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
-from fastapi import FastAPI, BackgroundTasks, HTTPException
-from passlib.context import CryptContext
-from pydantic import BaseModel
-import os
-import httpx
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.orm import Session
-from jose import jwt
-from sqlalchemy import select
-from sqlalchemy import update
-from sqlalchemy.orm import relationship
-import uuid
-# --- تنظیمات دیتابیس ---
-SQLALCHEMY_DATABASE_URL = "sqlite:///./game_server.db"  # برای تست از SQLite استفاده شده
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+from sqlalchemy.orm import sessionmaker, Session, relationship
+import random
+
+# --- تنظیمات دیتابیس (فرض بر استفاده از MySQL طبق درخواست قبلی تو) ---
+SQLALCHEMY_DATABASE_URL = "mysql+pymysql://user:password@localhost/dbname"
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# --- مدل‌های دیتابیس ---
-
- 
-
-# تنظیمات هش کردن رمز عبور
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
+app = FastAPI()
 
 # --- مدل‌های دیتابیس اصلاح شده ---
-
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text, Numeric
-from sqlalchemy.orm import relationship
-
-# --- مدل‌های دیتابیس اصلاح شده بر اساس منطق بازی شما ---
 
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
-    phone = Column(String, unique=True, index=True, nullable=False)
-    name = Column(String, nullable=True)
-    card_number = Column(String, nullable=True)
-    wallet_balance = Column(Numeric(12, 2), default=0) # استفاده از Numeric برای دقت مالی بالا
-    is_verified_payment = Column(Boolean, default=False) # ادمین تایید می‌کند که قبلاً پرداخت کرده یا نه
-    
-    sessions = relationship("UserSession", back_populates="user")
-    transactions = relationship("Transaction", back_populates="user")
-    room_participation = relationship("RoomParticipant", back_populates="user")
-
-# --- تغییر در مدل‌ها ---
+    phone = Column(String, unique=True, index=True)
+    balance = Column(Numeric(12, 2), default=0.0)
 
 class Room(Base):
     __tablename__ = "rooms"
-    id = Column(String, primary_key=True)
+    id = Column(String, primary_key=True, index=True)
     status = Column(String, default="waiting")  # waiting, playing, finished
     total_rounds_required = Column(Integer, default=5)
-    total_prize_pool = Column(Numeric(12, 2), default=0)
-    # دیگر current_round اینجا نیست!
+    total_prize_pool = Column(Numeric(12, 2), default=0.0)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    participants = relationship("RoomParticipant", back_populates="room")
 
 class RoomParticipant(Base):
     __tablename__ = "room_participants"
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, index=True)
     room_id = Column(String, ForeignKey("rooms.id"))
     user_id = Column(Integer, ForeignKey("users.id"))
     
-    # پیشرفت هر کاربر به صورت جداگانه
+    # پیشرفت هر کاربر به صورت جداگانه مدیریت می‌شود
     current_progress = Column(Integer, default=0) 
     is_eliminated = Column(Boolean, default=False)
     
-    # هدف راند فعلی برای این کاربر خاص (یا از یک تابع مرکزی گرفته شود)
-    # اما بهتر است هدف راند بر اساس شماره progress باشد
+    room = relationship("Room", back_populates="participants")
+    user = relationship("User")
 
+# --- توابع کمکی (Helper Functions) ---
 
-class Transaction(Base):
-    __tablename__ = "transactions"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    amount = Column(Numeric(12, 2), nullable=False)
-    type = Column(String, nullable=False) # "deposit", "prize", "entry_fee"
-    description = Column(Text, nullable=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+def get_target_for_round(round_number: int) -> int:
+    """
+    این تابع تعیین می‌کند در هر راند، عدد درست چه باشد.
+    برای اینکه همه در یک راند هدف مشترک داشته باشند، از یک فرمول یا Seed استفاده می‌کنیم.
+    """
+    random.seed(round_number) # ثابت نگه داشتن عدد برای همه در یک راند مشخص
+    return random.randint(1, 100)
 
-    user = relationship("User", back_populates="transactions")
-
-# بقیه مدل‌ها مثل UserSession و OTPCode را طبق کدهای قبلی نگه دار
-
-
-
-
-class GameResult(Base):
-    __tablename__ = "game_results"
+async def distribute_prize(winner_id: int, room_id: str, db: Session):
+    """
+    پرداخت جایزه به برنده و کسر از استخر جایزه.
+    این تابع باید بسیار امن باشد.
+    """
+    room = db.query(Room).filter(Room.id == room_id).first()
+    winner = db.query(User).filter(User.id == winner_id).first()
     
-    id = Column(Integer, primary_key=True, index=True)
-    room_id = Column(String, ForeignKey("rooms.id"))
-    winner_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    prize_amount = Column(Integer, default=0)
-    admin_paid = Column(Boolean, default=False)
-    payment_date = Column(DateTime, nullable=True)
+    if room and winner:
+        prize_amount = room.total_prize_pool * 0.6  # ۶۰ درصد برای برنده
+        winner.balance += prize_amount
+        # ۴۰ درصد باقی‌مانده به عنوان کارمزد سیستم در دیتابیس باقی می‌ماند
+        print(f"Winner {winner_id} received {prize_amount}")
 
+# --- API Endpoints ---
 
-
-
-
-   
-
-class OTPCode(Base):
-    __tablename__ = "otp_codes"
-    id = Column(Integer, primary_key=True, index=True)
-    phone = Column(String, index=True)
-    code = Column(String)
-    expires_at = Column(DateTime)
-
-
-
-
-
-
-
-# ایجاد جداول در دیتابیس
-Base.metadata.create_all(bind=engine)
-
-# --- منطق اصلی سرور ---
-
-app = FastAPI()
-@app.on_event("startup")
-async def startup_event():
-    print("--- ROUTES REGISTERED ---")
-    for route in app.routes:
-        print(f"Path: {route.path}")
-
-
-# مدیریت وضعیت روم‌ها در حافظه برای سرعت بیشتر (در کنار دیتابیس)
-active_rooms = {}
-
-
-# این همان کلیدی است که از پنل کپی کردید
-
-
-# تنظیمات SMS.ir (این‌ها را در فایل .env یا متغیرهای محیطی Render قرار بده)
-
-
-# ۱. این اطلاعات را در Environment Variables پنل Render ذخیره کن
-# (در بخش Settings > Environment در داشبورد Render)
-# SMS_USERNAME = os.environ.get("SMS_USERNAME")
-# SMS_PASSWORD = os.environ.get("SMS_PASSWORD") # همان Secret Key است
-# SMS_LINE = os.environ.get("SMS_LINE")
-
-
-
-# این متغیرها رو از محیط سرور می‌خونه (نه داخل کد)
- # مسیردهی‌ها را اصلاح کنید
-SECRET_KEY = "your_super_secret_key" # حتماً این را در .env قرار بده
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-REFRESH_TOKEN_EXPIRE_DAYS = 7
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire, "type": "access"})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-def create_refresh_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire, "type": "refresh"})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-SECRET_KEY = "secret-your_super_secret_key"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 15
-REFRESH_TOKEN_EXPIRE_DAYS = 30
-
-def create_tokens(user_id: int, db: Session, device_info: str = None):
-    # ۱. تولید Access Token (کوتاه مدت)
-    access_expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = jwt.encode(
-        {"sub": str(user_id), "exp": access_expire, "type": "access"}, 
-        SECRET_KEY, algorithm=ALGORITHM
-    )
-
-    # ۲. تولید Refresh Token (بلند مدت و منحصربه‌فرد)
-    refresh_token_str = secrets.token_urlsafe(32)
-    refresh_expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    
-    # ذخیره Refresh Token در توکن (برای اینکه در مرحله Refresh چک شود)
-    # اما برای امنیت بالاتر، ما خودِ رشته تصادفی را در دیتابیس ذخیره می‌کنیم
-    
-    # ۳. ثبت نشست جدید در دیتابیس
-    new_session = UserSession(
-        user_id=user_id,
-        refresh_token=refresh_token_str,
-        device_info=device_info,
-        is_active=True
-    )
-    db.add(new_session)
-    db.commit()
-    db.refresh(new_session)
-
-    return access_token, refresh_token_str
-@app.post("/auth/refresh")
-def refresh_access_token(refresh_token: str, db: Session = GAPGPTMASKTOKEN5dnn091tv7dX0X):
-    try:
-        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-        if payload.get("type") != "refresh":
-            raise HTTPException(status_code=401, detail="Invalid token type")
-            
-        phone = payload.get("sub")
-        # اینجا می‌توانید در دیتابیس چک کنید که آیا این Refresh Token باطل شده یا نه (بسیار مهم برای امنیت)
-        
-        # اگر همه چیز اوکی بود، Access Token جدید بده
-        new_access_token, _ = create_tokens(phone)
-        return {"access_token": new_access_token}
-        
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Refresh token expired or invalid. Please login again.")
-
-
-# تابع کمکی برای دریافت Session
+# تابع کمکی برای دریافت DB Session
 def get_db():
     db = SessionLocal()
     try:
@@ -229,598 +79,42 @@ def get_db():
     finally:
         db.close()
 
-@app.get("/check-phone/{phone_number}")
-def check_phone(phone_number: str, db: Session = Depends(get_db)):
-    # جستجو در دیتابیس برای یافتن شماره مورد نظر
-    user = db.query(User).filter(User.phone == phone_number).first()
-    
-    if user:
-        return {"exists": True, "message": "شماره در سیستم موجود است."}
-    else:
-        return {"exists": False, "message": "شماره یافت نشد."}
-
-
-async def send_sms_via_provider(phone: str, code: str):
-    # این همان آدرسی است که شما فرمودید
-    url = "https://api.sms.ir/v1/send/"
-    
-    # حتما از Environment Variable استفاده کن (توی پنل رندر ست کن)
-    api_key = os.environ.get("SMS_API_KEY") 
-    line_number = os.environ.get("SMS_LINE")
-    
-    headers = {
-        "x-api-key": api_key,
-        "Content-Type": "application/json",
-        "Accept": "text/plain"
-    }
-    
-    payload = {
-        "lineNumber": line_number,
-        "messageText": f"کد تایید شما در بازی حدس عدد: {code}",
-        "mobiles": [phone] # SMS.ir معمولا لیست موبایل‌ها رو به صورت آرایه میخواد
-    }
-
-    try:
-        async with httpx.AsyncClient() as client:
-            # استفاده از متد POST (بسیار مهم!)
-            response = await client.post(url, json=payload, headers=headers, timeout=10.0)
-            
-            data = response.json()
-            
-            # بررسی پاسخ
-            if response.status_code == 200 and data.get("status") == 1:
-                print(f"پیامک با موفقیت به {phone} ارسال شد.")
-                return True
-            else:
-                # این پرینت توی لاگ رندر میفته و بهت میگه دقیقا چه خطایی داده
-                print(f"خطا در ارسال: {data.get('message')} - کد خطا: {data.get('status')}")
-                return False
-                
-    except Exception as e:
-        print(f"خطای شبکه: {e}")
-        return False
-
-@app.get("/auth/sessions")
-def get_my_sessions(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    # نمایش تمام نشست‌های فعال کاربر
-    sessions = db.query(UserSession).filter(UserSession.user_id == current_user.id).all()
-    return sessions
-
-@app.post("/auth/sessions/terminate/{session_id}")
-def terminate_session(session_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    # پیدا کردن نشست مورد نظر
-    session = db.query(UserSession).filter(
-        UserSession.id == session_id, 
-        UserSession.user_id == current_user.id
-    ).first()
-
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    # باطل کردن نشست (مثل تلگرام)
-    session.is_active = False
-    db.commit()
-    
-    return {"message": "Session terminated successfully. If this was a hacker, they are now kicked out!"}
-
-
-
-def calculate_prize(player_count: int) -> float:
-    """محاسبه جایزه بر اساس تعداد بازیکنان"""
-    if player_count >= 3:
-        return 30000.0
-    elif player_count >= 2:
-        return 20000.0
-    else:
-        return 10000.0 # حالت پیش‌فرض برای تک‌نفره یا موارد دیگر
-
-async def room_timer_task(room_id: str, user_ids: List[int]):
-    """وظیفه پس‌زمینه برای مدیریت زمان ۵ دقیقه"""
-    await asyncio.sleep(300) # ۵ دقیقه انتظار
-    
-    db = SessionLocal()
+@app.post("/rooms/join")
+async def join_room(room_id: str, user_id: int, db: Session = Depends(get_db)):
     room = db.query(Room).filter(Room.id == room_id).first()
-    
-    if room and room.status == "waiting":
-        # اگر در ۵ دقیقه کسی نیامده بود یا روم تکمیل نشده بود
-        print(f"Room {room_id} expired. Refunding users...")
-        for u_id in user_ids:
-            user = db.query(User).filter(User.id == u_id).first()
-            if user:
-                user.wallet_balance += 15000.0 # برگشت ورودی ۱۵ هزار تومان
-        
-        room.status = "cancelled"
-        db.commit()
-    db.close()
+    user = db.query(User).filter(User.id == user_id).first()
 
-
-
-@app.post("/game/claim-prize")
-async def claim_prize(
-    room_id: str, 
-    winner_id: int, 
-    prize_amount: int, 
-    db: Session = GAPGPTMASKTOKENp7hxof6wciaX2X
-):
-    async with db.begin():
-        # ۱. قفل کردن کاربر برنده برای جلوگیری از دریافت جایزه چندباره
-        user = db.query(User).filter(User.id == winner_id).with_for_update().first()
-        
-        # ۲. قفل کردن روم برای اطمینان از اینکه جایزه‌ای قبلاً پرداخت نشده
-        room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
-        
-        if not room or room.status == "finished":
-            raise HTTPException(status_code=400, detail="این روم قبلاً تسویه شده است")
-
-        # ۳. اضافه کردن پول به کیف پول
-        user.wallet_balance += prize_amount
-        
-        # ۴. ثبت در تاریخچه تراکنش‌ها
-        transaction = GAPGPTMASKTOKENp7hxof6wciaX3X
-            user_id=user.id,
-            amount=prize_amount,
-            type="prize",
-            description=f"جایزه روم {room.id}"
-        )
-        db.add(transaction)
-
-        # ۵. تغییر وضعیت روم به finished برای جلوگیری از پرداخت مجدد
-        room.status = "finished"
-        
-        # در پایان بلاک with، همه تغییرات با هم ذخیره می‌شوند
-    
-    return {"status": "success", "new_balance": user.wallet_balance}
-
-router = APIRouter()
-
-@router.post("/auth/register")
-def register_user(
-    data: RegistrationInput, # شامل phone و اطلاعات دیگر
-    current_temp_user: access_token, # توکن موقتی که در مرحله verify-code گرفتی
-    db: Session = Depends(get_db)):,
-    device_info: str = "Unknown Device"
-):
-    # ۱. ابتدا توکن موقت را چک کن تا مطمئن شویم کاربر مرحله OTP را رد کرده است
-    # (این مرحله امنیت را تضمین می‌کند که کسی نتواند مستقیم ثبت‌نام کند)
-    try:
-        payload = jwt.decode(current_temp_user, SECRET_KEY, algorithms=[ALGORITHM])
-        if payload.get("type") != "registration":
-            raise HTTPException(status_code=401, detail="Invalid token type")
-        phone_from_token = payload.get("sub")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Registration token expired or invalid")
-
-    # ۲. چک کردن اینکه آیا کاربر قبلاً ثبت‌نام کرده یا نه
-    existing_user = db.query(User).filter(User.phone == phone_from_token).first()
-    if existing_user:
-        raise HTTPException(status_code=400, detail="User already exists")
-
-    # ۳. ساخت کاربر جدید در دیتابیس
-    new_user = User(
-        phone = phone_from_token,
-        username = data.username,
-        # سایر فیلدها...
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-
-    # ۴. مرحله طلایی: تولید توکن‌های اصلی و ثبت نشست (Session)
-    # اینجا همان جایی است که کاربر رسماً وارد بازی می‌شود و "ردپا" در دیتابیس می‌ماند
-    access_token, refresh_token = create_tokens(
-        user_id=new_user.id, 
-        db=db, 
-        device_info=device_info
-    )
-
-    return {
-        "message": "Registration successful",
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "is_new_user": False
-    }
-@app.get("/room_status/{room_id}")
-def get_room_status(room_id: str):
-    db = SessionLocal()
-    room = db.query(Room).filter(Room.id == room_id).first()
     if not room:
-        return {"error": "Room not found"}
+        raise HTTPException(status_code=404, detail="روم یافت نشد")
     
-    rounds = db.query(Round).filter(Round.room_id == room_id).all()
-    round_data = [{"round": r.round_number, "target": r.target_number} for r in rounds]
+    # بررسی موجودی برای ورود (مثلاً ۱۰ هزار تومان)
+    if user.balance < 10000:
+        raise HTTPException(status_code=400, detail="موجودی کافی نیست")
+
+    # اگر کاربر قبلاً در این روم بوده، دوباره اضافه نشود
+    existing = db.query(RoomParticipant).filter(
+        RoomParticipant.room_id == room_id, 
+        RoomParticipant.user_id == user_id
+    ).first()
     
-    return {
-        "status": room.status,
-        "players": room.current_players_count,
-        "rounds": round_data
-    }
+    if existing:
+        return {"message": "شما قبلاً در این روم هستید"}
 
-
-def process_purchase(db: Session, user_id: int, amount: int):
-    try:
-        # ۱. شروع یک تراکنش (Transaction)
-        # استفاده از with_for_update باعث می‌شود این ردیف در دیتابیس قفل شود
-        user = db.query(User).filter(User.id == user_id).with_for_update().first()
-
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-
-        # ۲. چک کردن موجودی (حالا کاملاً امن است چون ردیف قفل شده)
-        if user.wallet_balance < amount:
-            raise HTTPException(status_code=400, detail="Insufficient balance")
-
-        # ۳. کسر مبلغ
-        user.wallet_balance -= amount
-        
-        # ۴. ثبت تاریخچه تراکنش (حتماً برای Audit Log لازم است)
-        new_transaction = Transaction(
-            user_id=user.id,
-            amount=-amount,
-            type="purchase",
-            description="Buying game item"
-        )
-        db.add(new_transaction)
-
-        # ۵. تایید نهایی (Commit) - در این لحظه قفل باز می‌شود
-        db.commit()
-        return {"message": "Purchase successful", "new_balance": user.wallet_balance}
-
-    except Exception as e:
-        # اگر هر مشکلی پیش بیاید، همه چیز به حالت اول برمی‌گردد
-        db.rollback()
-        raise e
-
-
-SECRET_KEY = os.environ["SECRET_KEY"]
-ALGORITHM = "HS256"
-
-def create_access_token(data: dict, expires_delta: timedelta = None):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-@app.post("/admin/pay_winner/{result_id}")
-def admin_pay(result_id: int):
-    """بخش ادمین برای تایید پرداخت"""
-    db = SessionLocal()
-    result = db.query(GameResult).filter(GameResult.id == result_id).first()
-    if not result:
-        raise HTTPException(status_code=404, detail="Result not found")
-    
-    result.admin_paid = True
-    result.payment_date = datetime.utcnow()
+    # اضافه کردن کاربر به روم
+    new_participant = RoomParticipant(room_id=room_id, user_id=user_id)
+    db.add(new_participant)
     db.commit()
-    return {"message": "Payment marked as completed"}
-
-
-
-# مدل‌های ورودی برای درخواست‌ها
-class PhoneInput(BaseModel):
-    phone: str
-
-class VerifyCodeInput(BaseModel):
-    phone: str
-    code: str
-
-class SetPasswordInput(BaseModel):
-    phone: str
-    password: str
-    token: str # توکن موقتی که در مرحله قبل گرفتیم
-OTP_VALIDITY_SECONDS = 120
-@app.post("/auth/request-code")
-async def request_code(data: PhoneInput, background_tasks: BackgroundTasks):
-    db = SessionLocal()
     
-    # ۱. تولید کد ۴ رقمی
-    code = str(random.randint(1000, 9999))
-    expires = datetime.utcnow() + timedelta(seconds=OTP_VALIDITY_SECONDS)
-    db.query(OTPCode).filter(
-    OTPCode.phone == data.phone
-    ).delete()
+    return {"message": "با موفقیت به روم پیوستید"}
 
-    db.commit()
-    # ۲. ذخیره در دیتابیس
-    new_otp = OTPCode(phone=data.phone, code=code, expires_at=expires)
-    db.add(new_otp)
-    db.commit()
-    db.close()
-    
-    # ۳. فراخوانی تابع واقعی ارسال پیامک (اینجا تغییر اصلی است)
-    # از background_tasks استفاده می‌کنیم تا کاربر منتظر ارسال پیامک نماند و سرعت بالا برود
-    background_tasks.add_task(send_sms_via_provider, data.phone, code)
-    
-    return {
-        "message": "Code sent successfully",
-        "expires_in": OTP_VALIDITY_SECONDS 
-    }
-
-
-
-def quick_deduct(db: Session, user_id: int, amount: int):
-    # این دستور در سطح دیتابیس انجام می‌شود: 
-    # UPDATE users SET wallet_balance = wallet_balance - amount WHERE id = user_id AND wallet_balance >= amount
-    result = db.execute(
-        update(User)
-        .where(User.id == user_id)
-        .where(User.wallet_balance >= amount)
-        .values(wallet_balance=User.wallet_balance - amount)
-    )
-    db.commit()
-
-    if result.rowcount == 0:
-        # اگر ردیف آپدیت نشد، یعنی یا کاربر نبود یا موجودی کافی نبود
-        raise HTTPException(status_code=400, detail="Transaction failed: Insufficient funds or invalid user")
-    
-    return {"message": "Success"}
-async def distribute_prize(winning_user_id: int, room_id: str, db: Session):
-    """
-    محاسبه ۶۰ درصد از کل پول جمع شده و واریز به برنده
-    """
-    async with db.begin():
-        # ۱. پیدا کردن روم و برنده
-        room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
-        winner = db.query(User).filter(User.id == winning_user_id).with_for_update().first()
-
-        if not room or not winner:
-            raise HTTPException(status_code=404, detail="روم یا برنده یافت نشد")
-
-        # ۲. محاسبه مقدار جایزه (۶۰ درصد از کل پول جمع شده در روم)
-        # فرض می‌کنیم room.total_prize_pool مقدار کل پول ورودی‌هاست
-        total_pool = room.total_prize_pool
-        prize_amount = calculate_prize(total_pool) # همان تابعی که قبلاً نوشتیم
-
-        # ۳. واریز به کیف پول برنده
-        winner.wallet_balance += prize_amount
-
-        # ۴. ثبت تراکنش برای برنده
-        win_tx = Transaction(
-            user_id=winner.id,
-            amount=prize_amount,
-            type="prize",
-            description=f"جایزه برنده شدن در روم {room_id}"
-        )
-        db.add(win_tx)
-
-        # ۵. ثبت تراکنش برای خودت (کمیسیون ۴۰ درصد - اختیاری اما برای گزارش مالی عالی است)
-        commission_amount = total_pool - prize_amount
-        admin_tx = Transaction(
-            user_id=0, # یا یک ID ثابت برای ادمین/سیستم
-            amount=commission_amount,
-            type="commission",
-            description=f"کمیسیون روم {room_id}"
-        )
-        db.add(admin_tx)
-
-        # ۶. بستن روم
-        room.status = "finished"
-        room.room_logs = f"بازی تمام شد. برنده: {winner.name}. جایزه: {prize_amount}"
-        
-        db.commit()
-        return prize_amount
-
-@app.post("/auth/verify-code")
-
-async def verify_code(
-    phone: str = Form(...), 
-    code: str = Form(...), 
-    device_info: str = Form(None),
-    ip_address: str = Form(None),
-    db: Session = Depends(get_db)
-):
-    # ۱. بررسی صحت کد OTP (این بخش را با منطق خودت که در دیتابیس ذخیره کردی ترکیب کن)
-    is_valid = check_otp_from_db(phone, code) # فرض بر اینکه این تابع را داری
-    if not is_valid:
-        raise HTTPException(status_code=400, detail="کد وارد شده اشتباه است")
-
-    # ۲. بررسی اینکه آیا کاربر وجود دارد یا خیر
-    user = db.query(User).filter(User.phone == phone).first()
-
-    if not user:
-        # کاربر جدید است -> تولید توکن موقت برای ثبت‌نام
-        registration_token = create_access_token({"sub": phone, "type": "registration"})
-        return {
-            "status": "new_user",
-            "message": "لطفاً برای تکمیل ثبت‌نام، اطلاعات خود را وارد کنید",
-            "registration_token": registration_token
-        }
-
-    # ۳. کاربر وجود دارد -> ایجاد نشست (Session) و توکن‌ها
-    access_token = create_access_token(data={"sub": str(user.id)})
-    refresh_token = create_refresh_token(data={"sub": str(user.id)})
-
-    # ایجاد ردیف در جدول UserSession
-    new_session = UserSession(
-        user_id=user.id,
-        refresh_token=refresh_token,
-        device_info=device_info,
-        ip_address=ip_address
-    )
-    db.add(new_session)
-    db.commit()
-
-    return {
-        "status": "success",
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer"
-    }
-
-@app.post("/auth/refresh")
-async def refresh_session(
-    refresh_token: str = Form(...), 
-    db: Session = Depends(get_db)
-):
-    try:
-        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-        if payload.get("type") != "refresh":
-            raise HTTPException(status_code=401, detail="توکن نامعتبر است")
-        
-        user_id = payload.get("sub")
-        
-        # بررسی اینکه آیا این Refresh Token در دیتابیس هنوز فعال است؟
-        session = db.query(UserSession).filter(
-            UserSession.refresh_token == refresh_token,
-            UserSession.is_active == True
-        ).first()
-        
-        if not session:
-            raise HTTPException(status_code=401, detail="نشست منقضی یا باطل شده است. دوباره لاگین کنید.")
-
-        # تولید توکن جدید
-        new_access_token = create_access_token(data={"sub": str(user_id)})
-        
-        # بروزرسانی زمان آخرین استفاده
-        session.last_used_at = datetime.utcnow()
-        db.commit()
-
-        return {
-            "access_token": new_access_token,
-            "token_type": "bearer"
-        }
-        
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="زمان توکن به پایان رسیده است")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="توکن نامعتبر است")
-@app.post("/admin/create-room")
-async def create_room(
-    max_capacity: int, 
-    total_rounds: int, 
-    db: Session = Depends(get_db) # استفاده از Dependency برای مدیریت دیتابیس
-):
-    """ایجاد روم جدید توسط ادمین با ظرفیت مشخص"""
-    try:
-        new_room = Room(
-            id=str(uuid.uuid4()),
-            max_capacity=max_capacity,
-            total_rounds=total_rounds,
-            status="waiting",
-            current_players_count=0
-        )
-        db.add(new_room)
-        db.commit()
-        db.refresh(new_room)
-        return {
-            "status": "success", 
-            "room_id": new_room.id, 
-            "capacity": new_room.max_capacity
-        }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"خطا در ساخت روم: {str(e)}")
-# --- اصلاح شده برای سناریوی تو ---
-
-@app.post("/game/join-room/{room_id}")
-async def join_room(
-    room_id: str, 
-    user_id: int, 
-    db: Session = GAPGPTMASKTOKEN2br336wal9lX0X,
-    background_tasks: BackgroundTasks = Depends()
-):
-    async with db.begin():
-        room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
-        user = db.query(User).filter(User.id == user_id).with_for_update().first()
-
-        if not room or not user:
-            raise HTTPException(status_code=404, detail="روم یا کاربر یافت نشد")
-
-        if room.status != "waiting":
-            raise HTTPException(status_code=400, detail="روم در حال بازی است")
-
-        # --- بخش مورد نظر تو: فقط چک کردن، نه کسر کردن ---
-        entry_fee = 10000
-        if user.wallet_balance < entry_fee:
-            raise HTTPException(status_code=400, detail="موجودی شما برای ورود به این روم کافی نیست (حداقل 10,000 تومان)")
-        # --------------------------------------------------
-
-        if room.current_players_count >= room.max_capacity:
-            raise HTTPException(status_code=400, detail="روم پر است")
-
-        # ثبت عضویت (بدون کسر پول در این مرحله)
-        new_participant = RoomParticipant(room_id=room.id, user_id=user.id)
-        db.add(new_participant)
-        room.current_players_count += 1
-        
-        db.commit()
-
-        # شروع تایمر پس‌زمینه (فقط اگر اولین نفر باشد یا برای مدیریت چرخه)
-        # نکته: در دنیای واقعی بهتر است با یک Flag در دیتابیس چک کنیم که تایمر دوبار اجرا نشود
-        if room.current_players_count == 1:
-            background_tasks.add_task(manage_room_lifecycle, room_id, db)
-
-    return {"status": "success", "message": "با موفقیت وارد شدید. منتظر شروع بازی باشید..."}
-
-
-async def manage_room_lifecycle(room_id: str, db: Session):
-    """مدیریت تایمر، کسر پول و شروع رسمی بازی"""
-    await asyncio.sleep(120) # تایمر ۲ دقیقه
-
-    async with db.begin():
-        room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
-        
-        if not room or room.status != "waiting":
-            return
-
-        # ۱. بررسی تعداد بازیکنان
-        if room.current_players_count < 2:
-            room.status = "cancelled"
-            room.room_logs = "تعداد بازیکنان کافی نبود."
-            db.commit()
-            return
-
-        # ۲. کسر پول از همه بازیکنان در لحظه شروع (اینجا جدی می‌شود!)
-        participants = db.query(RoomParticipant).filter(RoomParticipant.room_id == room_id).all()
-        total_collected = 0
-        entry_fee = 10000
-        valid_user_ids = []
-
-        for p in participants:
-            user = db.query(User).filter(User.id == p.user_id).with_for_update().first()
-            
-            # چک می‌کنیم آیا هنوز هم پول دارد؟ (ممکن است در این ۲ دقیقه خرج کرده باشد)
-            if user and user.wallet_balance >= entry_fee:
-                user.wallet_balance -= entry_fee
-                total_collected += entry_fee
-                
-                # ثبت تراکنش
-                tx = Transaction(user_id=user.id, amount=-entry_fee, type="entry_fee", description=f"پرداخت ورودی روم {room_id}")
-                db.add(tx)
-                valid_user_ids.append(user.id)
-            else:
-                # اگر پول نداشت، از لیست بازیکنان حذف می‌شود
-                # در اینجا باید از دیتابیس Participant هم پاک شود
-                db.query(RoomParticipant).filter(RoomParticipant.room_id == room_id, RoomParticipant.user_id == user.id).delete()
-                room.current_players_count -= 1
-
-        # ۳. بررسی مجدد تعداد پس از کسر پول
-        if room.current_players_count < 2:
-            room.status = "cancelled"
-            room.room_logs = "به دلیل عدم موجودی کافی برخی بازیکنان، بازی لغو شد."
-            db.commit()
-            return
-
-        # ۴. شروع بازی و محاسبه پول‌ها
-        room.status = "playing"
-        room.current_round = 1
-        room.current_round_target = generate_round_number()
-        room.total_prize_pool = total_collected # ذخیره کل پول برای تقسیم در پایان
-        room.room_logs = f"بازی شروع شد. کل پول جمع شده: {total_collected}"
-        
-        db.commit()
 @app.post("/game/submit-answer")
-async def submit_answer(answer: str, user_id: int, room_id: str, db: Session):
+async def submit_answer(answer: str, user_id: int, room_id: str, db: Session = Depends(get_db)):
+    # استفاده از with_for_update برای جلوگیری از تداخل در لحظه برنده شدن
     async with db.begin():
-        # 1. قفل کردن روم و کاربر برای جلوگیری از Race Condition
         room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
+        
         if not room or room.status != "playing":
-            raise HTTPException(status_code=400, detail="بازی در دسترس نیست")
+            raise HTTPException(status_code=400, detail="بازی در دسترس نیست یا تمام شده است")
 
         participant = db.query(RoomParticipant).filter(
             RoomParticipant.room_id == room_id, 
@@ -828,69 +122,36 @@ async def submit_answer(answer: str, user_id: int, room_id: str, db: Session):
         ).with_for_update().first()
 
         if not participant or participant.is_eliminated:
-            raise HTTPException(status_code=400, detail="شما در این رقابت شرکت ندارید")
+            raise HTTPException(status_code=400, detail="شما در این رقابت حضور ندارید یا حذف شده‌اید")
 
-        # 2. تولید عدد درست برای راند فعلی کاربر
-        # فرض می‌کنیم تابعی داریم که برای هر راند، یک عدد ثابت یا تصادفی تولید می‌کند
-        # مثلاً برای راند 1 عدد 10، برای راند 2 عدد 25 و ...
-        correct_target = get_target_for_round(participant.current_progress + 1)
+        # محاسبه هدف راند فعلی کاربر
+        # راند کاربر از ۰ شروع می‌شود، پس برای راند اول (راند ۱) باید target را بگیریم
+        current_round_number = participant.current_progress + 1
+        correct_target = get_target_for_round(current_round_number)
 
-        # 3. بررسی جواب
         if str(answer) == str(correct_target):
+            # --- کاربر پاسخ درست داده است ---
             participant.current_progress += 1
             
-            # آیا این کاربر اولین کسی است که تمام راندها را تمام کرد؟
+            # بررسی اینکه آیا این کاربر اولین کسی است که تمام راندها را تمام کرده؟
             if participant.current_progress >= room.total_rounds_required:
                 room.status = "finished"  # پایان بازی برای همه
-                await distribute_prize(user_id, room_id, db) # پرداخت جایزه
-                return {"status": "winner", "message": "تبریک! شما برنده شدید!"}
+                await distribute_prize(user_id, room_id, db)
+                db.commit()
+                return {"status": "champion", "message": "تبریک! شما اولین نفر بودید که برنده شدید!"}
             
-            return {"status": "success", "message": f"درست بود! راند {participant.current_progress} شروع شد."}
-        
+            db.commit()
+            return {
+                "status": "round_passed", 
+                "message": f"درست بود! وارد راند {participant.current_progress + 1} شدید."
+            }
         else:
-            # جواب غلط = حذف از رقابت (اما بازی برای بقیه ادامه دارد)
+            # --- کاربر پاسخ غلط داده است ---
             participant.is_eliminated = True
-            return {"status": "eliminated", "message": "جواب غلط بود! شما از رقابت حذف شدید."}
+            db.commit()
+            return {
+                "status": "eliminated", 
+                "message": "جواب غلط بود! شما از رقابت حذف شدید."
+            }
 
-
-
-
-def generate_round_number():
-    # عدد تصادفی بین 0 و 1000 با دقت یک رقم اعشار
-    return round(random.uniform(0, 1000), 1)
-
-# @app.post("/auth/set-password")
-# async def set_password(data: SetPasswordInput):
-#     db = SessionLocal()
-    
-#     # ۱. چک کردن توکن موقت
-#     try:
-#         payload = jwt.decode(data.token, SECRET_KEY, algorithms=[ALGORITHM])
-#         if payload.get("type") != "registration":
-#             raise HTTPException(status_code=400, detail="Invalid token type")
-#         phone_in_token = payload.get("sub")
-#     except:
-#         raise HTTPException(status_code=401, detail="Invalid or expired registration token")
-
-#     if phone_in_token != data.phone:
-#         raise HTTPException(status_code=400, detail="Phone number mismatch")
-
-#     # ۲. ساخت کاربر
-#     user = db.query(User).filter(User.phone == data.phone).first()
-#     if user:
-#         raise HTTPException(status_code=400, detail="User already exists")
-    
-#     hashed_pw = get_password_hash(data.password)
-#     new_user = User(phone=data.phone, password=hashed_pw)
-#     db.add(new_user)
-#     db.commit()
-    
-#     # ۳. بازگشت توکن نهایی
-#     access_token = create_access_token({"sub": data.phone, "type": "access"})
-#     return {"message": "Account created successfully", "access_token": access_token}
-
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# سایر Endpointها مثل ساخت روم و مدیریت تایمر...
