@@ -316,7 +316,11 @@ async def request_code(data: PhoneInput, background_tasks: BackgroundTasks):
     # ۱. تولید کد ۴ رقمی
     code = str(random.randint(1000, 9999))
     expires = datetime.utcnow() + timedelta(OTP_VALIDITY_SECONDS)
-    
+    db.query(OTPCode).filter(
+    OTPCode.phone == data.phone
+    ).delete()
+
+    db.commit()
     # ۲. ذخیره در دیتابیس
     new_otp = OTPCode(phone=data.phone, code=code, expires_at=expires)
     db.add(new_otp)
