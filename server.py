@@ -64,7 +64,7 @@ def get_target_for_round(round_number: int) -> int:
     random.seed(round_number) # ثابت نگه داشتن عدد برای همه در یک راند مشخص
     return random.randint(1, 100)
 
-async def distribute_prize(winner_id: int, room_id: str, db: Session):
+async def distribute_prize(winner_id: int, room_id: str, db: Session=Depends(get_db)):
     """
     پرداخت جایزه به برنده و کسر از استخر جایزه.
     این تابع باید بسیار امن باشد.
@@ -79,7 +79,7 @@ async def distribute_prize(winner_id: int, room_id: str, db: Session):
         # ۴۰ درصد باقی‌مانده به عنوان کارمزد سیستم در دیتابیس باقی می‌ماند
         print(f"Winner {winner_id} received {prize_amount}")
 # فرض کن این تابع هنگام ساخت اتاق اجرا می‌شود
-def setup_room_rounds(db: Session, room_id: str, total_rounds: int):
+def setup_room_rounds(db: Session=Depends(get_db), room_id: str, total_rounds: int):
     for r in range(1, total_rounds + 1):
         # اینجا می‌توانی اعداد را از یک لیست مشخص یا تصادفی برداری
         correct_val = random.randint(1, 100) 
