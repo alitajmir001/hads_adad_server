@@ -40,9 +40,10 @@ class User(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     phone = Column(String, unique=True, index=True, nullable=False)
-    password = Column(String, nullable=True)  # برای کاربران ثبت‌نام شده
+    password = Column(String, nullable=True)  # برای کاربرانی که بعداً رمز می‌گذارند
     
-    # اصلاح شده: استفاده از Integer برای جلوگیری از خطای محاسباتی (واحد: تومان)
+    # اصلاح شده: استفاده از Integer برای جلوگیری از خطاهای محاسباتی (واحد: تومان)
+    # همیشه مقادیر را در محاسبات ضرب در 1 (یا اگر اعشار داری در 100) انجام بده
     wallet_balance = Column(Integer, default=0) 
     
     name = Column(String, nullable=True)
@@ -51,59 +52,67 @@ class User(Base):
     # روابط (Relationships)
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="user")
+    room_participation = relationship("RoomParticipant", back_populates="user")
 
 class UserSession(Base):
-    """مدل جدید برای مدیریت نشست‌ها (مشابه تلگرام)"""
+    """مدیریت نشست‌ها برای قابلیت Logout و Revoke (مشابه تلگرام)"""
     __tablename__ = "user_sessions"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(Integer, ForeignKey("users.id"))
     refresh_token = Column(String, unique=True, index=True, nullable=False)
     
-    device_info = Column(String, nullable=True) # مثلا: "iPhone 13 / iOS"
+    device_info = Column(String, nullable=True) # مثلا: "Android / Samsung S21"
     ip_address = Column(String, nullable=True)
     
-    is_active = Column(Boolean, default=True) # برای قابلیت Revoke (ابطال نشست)
+    is_active = Column(Boolean, default=True) # اگر False شود، کاربر فوراً از سیستم خارج می‌شود
     created_at = Column(DateTime, default=datetime.utcnow)
     last_used_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="sessions")
 
 class Transaction(Base):
-    """مدل برای ثبت دقیق تمام تغییرات مالی (Audit Log)"""
+    """Audit Log: ثبت هرگونه جابجایی پول برای جلوگیری از شکایات و خطا"""
     __tablename__ = "transactions"
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    amount = Column(Integer, nullable=False) # مثبت برای جایزه، منفی برای خرید
-    type = Column(String, nullable=False)   # "deposit", "withdraw", "purchase", "prize"
+    amount = Column(Integer, nullable=False) # مثبت برای جایزه، منفی برای هزینه
+    type = Column(String, nullable=False)   # "deposit", "purchase", "prize", "refill"
     description = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="transactions")
 
 class Room(Base):
+    """مدیریت روم‌ها در دیتابیس (به جای دیکشنری در رم)"""
     __tablename__ = "rooms"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    status = Column(String, default="waiting") # waiting, playing, finished, cancelled
+    status = Column(String, default="waiting") # waiting, playing, finished
     
     max_capacity = Column(Integer, default=9)
     current_players_count = Column(Integer, default=0)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    start_time = Column(DateTime, nullable=True)
+    # ذخیره اطلاعات فنی برای بازی
+    target_number = Column(Integer, nullable=True)
+    current_round = Column(Integer, default=1)
     
-    # ذخیره لیست ID بازیکنان در دیتابیس برای امنیت بیشتر
-    player_ids = Column(Text, nullable=True) # ذخیره به صورت رشته JSON یا جداول واسط
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    participants = relationship("RoomParticipant", back_populates="room")
 
-class Round(Base):
-    __tablename__ = "rounds"
+class RoomParticipant(Base):
+    """جدول واسط برای مدیریت بازیکنان در هر روم"""
+    __tablename__ = "room_participants"
     
     id = Column(Integer, primary_key=True, index=True)
     room_id = Column(String, ForeignKey("rooms.id"))
-    round_number = Column(Integer)
-    target_number = Column(Integer) # تغییر به Integer (مثلاً عدد را ضربدر 100 می‌کنیم تا اعشار حفظ شود)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    joined_at = Column(DateTime, default=datetime.utcnow)
+
+    room = relationship("Room", back_populates="participants")
+    user = relationship("User", back_populates="room_participation")
 
 class GameResult(Base):
     __tablename__ = "game_results"
@@ -167,8 +176,21 @@ active_rooms = {}
 
 # این متغیرها رو از محیط سرور می‌خونه (نه داخل کد)
  # مسیردهی‌ها را اصلاح کنید
+SECRET_KEY = "your_super_secret_key" # حتماً این را در .env قرار بده
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+REFRESH_TOKEN_EXPIRE_DAYS = 7
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire, "type": "access"})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-
+def create_refresh_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode.update({"exp": expire, "type": "refresh"})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 SECRET_KEY = "secret-your_super_secret_key"
 ALGORITHM = "HS256"
@@ -571,49 +593,89 @@ def quick_deduct(db: Session, user_id: int, amount: int):
     return {"message": "Success"}
 
 @app.post("/auth/verify-code")
-async def verify_code(data: VerifyCodeInput, device_info: str = "Unknown Device", db: Session = GAPGPTMASKTOKENh4rp0fr0kybX0X
-    # ۱. چک کردن اعتبار OTP در دیتابیس
-    otp_record = db.query(OTPCode).filter(
-        OTPCode.phone == data.phone, 
-        OTPCode.code == data.code,
-        OTPCode.expires_at > datetime.utcnow()
-    ).first()
-    
-    if not otp_record:
-        raise HTTPException(status_code=400, detail="Invalid or expired code")
-    
-    # ۲. حذف کد استفاده شده برای جلوگیری از Replay Attack
-    db.delete(otp_record)
+
+async def verify_code(
+    phone: str = Form(...), 
+    code: str = Form(...), 
+    device_info: str = Form(None),
+    ip_address: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    # ۱. بررسی صحت کد OTP (این بخش را با منطق خودت که در دیتابیس ذخیره کردی ترکیب کن)
+    is_valid = check_otp_from_db(phone, code) # فرض بر اینکه این تابع را داری
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="کد وارد شده اشتباه است")
+
+    # ۲. بررسی اینکه آیا کاربر وجود دارد یا خیر
+    user = db.query(User).filter(User.phone == phone).first()
+
+    if not user:
+        # کاربر جدید است -> تولید توکن موقت برای ثبت‌نام
+        registration_token = create_access_token({"sub": phone, "type": "registration"})
+        return {
+            "status": "new_user",
+            "message": "لطفاً برای تکمیل ثبت‌نام، اطلاعات خود را وارد کنید",
+            "registration_token": registration_token
+        }
+
+    # ۳. کاربر وجود دارد -> ایجاد نشست (Session) و توکن‌ها
+    access_token = create_access_token(data={"sub": str(user.id)})
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+
+    # ایجاد ردیف در جدول UserSession
+    new_session = UserSession(
+        user_id=user.id,
+        refresh_token=refresh_token,
+        device_info=device_info,
+        ip_address=ip_address
+    )
+    db.add(new_session)
     db.commit()
 
-    # ۳. پیدا کردن کاربر
-    user = db.query(User).filter(User.phone == data.phone).first()
+    return {
+        "status": "success",
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer"
+    }
 
-    if user:
-        # --- سناریوی اول: کاربر قدیمی است (Login) ---
-        # تولید توکن‌های جفت (Access + Refresh) و ثبت نشست در دیتابیس
-        GAPGPTMASKTOKENh4rp0fr0kybX1X, GAPGPTMASKTOKENh4rp0fr0kybX2X = GAPGPTMASKTOKENh4rp0fr0kybX3X, db, device_info)
+@app.post("/auth/refresh")
+async def refresh_session(
+    refresh_token: str = Form(...), 
+    db: Session = Depends(get_db)
+):
+    try:
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="توکن نامعتبر است")
         
+        user_id = payload.get("sub")
+        
+        # بررسی اینکه آیا این Refresh Token در دیتابیس هنوز فعال است؟
+        session = db.query(UserSession).filter(
+            UserSession.refresh_token == refresh_token,
+            UserSession.is_active == True
+        ).first()
+        
+        if not session:
+            raise HTTPException(status_code=401, detail="نشست منقضی یا باطل شده است. دوباره لاگین کنید.")
+
+        # تولید توکن جدید
+        new_access_token = create_access_token(data={"sub": str(user_id)})
+        
+        # بروزرسانی زمان آخرین استفاده
+        session.last_used_at = datetime.utcnow()
+        db.commit()
+
         return {
-            "message": "Login successful",
-            "GAPGPTMASKTOKENh4rp0fr0kybX4X": GAPGPTMASKTOKENh4rp0fr0kybX5X,
-            "GAPGPTMASKTOKENh4rp0fr0kybX6X": GAPGPTMASKTOKENh4rp0fr0kybX7X,
-            "is_new_user": False
+            "access_token": new_access_token,
+            "token_type": "bearer"
         }
-    else:
-        # --- سناریوی دوم: کاربر جدید است (Registration) ---
-        # در اینجا ما هنوز کاربر را در جدول User نمی‌سازیم، 
-        # بلکه یک توکن موقت (Temporary Token) می‌دهیم تا مرحله بعدی (تعیین نام/رمز) را طی کند.
         
-        temp_token_expire = datetime.utcnow() + timedelta(minutes=5)
-        GAPGPTMASKTOKENh4rp0fr0kybX8X = GAPGPTMASKTOKENh4rp0fr0kybX9X"sub": data.phone, "type": "registration", "exp": temp_token_expire}, 
-        SECRET_KEY, algorithm=ALGORITHM)
-        
-        return {
-            "message": "Code verified. Please complete your registration.",
-            "GAPGPTMASKTOKENh4rp0fr0kybX10X": GAPGPTMASKTOKENh4rp0fr0kybX11X,
-            "is_new_user": True
-        }
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="زمان توکن به پایان رسیده است")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="توکن نامعتبر است")
 
 
 # @app.post("/auth/set-password")
