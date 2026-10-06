@@ -655,49 +655,97 @@ async def refresh_session(
 async def create_room(
     max_capacity: int, 
     total_rounds: int, 
+    db: Session = Depends(get_db) # استفاده از Dependency برای مدیریت دیتابیس
+):
+    """ایجاد روم جدید توسط ادمین با ظرفیت مشخص"""
+    try:
+        new_room = Room(
+            id=str(uuid.uuid4()),
+            max_capacity=max_capacity,
+            total_rounds=total_rounds,
+            status="waiting",
+            current_players_count=0
+        )
+        db.add(new_room)
+        db.commit()
+        db.refresh(new_room)
+        return {
+            "status": "success", 
+            "room_id": new_room.id, 
+            "capacity": new_room.max_capacity
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"خطا در ساخت روم: {str(e)}")
+@app.post("/game/join-room/{room_id}")
+async def join_room(
+    room_id: str, 
+    user_id: int, # این مقدار باید از JWT استخراج شود (در مرحله بعد)
     db: Session = Depends(get_db)
 ):
-    # ادمین روم را می‌سازد
-    new_room = Room(
-        max_capacity=max_capacity,
-        total_rounds=total_rounds,
-        status="waiting",
-        current_players_count=0
-    )
-    db.add(new_room)
-    db.commit()
-    return {"message": "روم با موفقیت ساخته شد", "room_id": new_room.id}
-@app.post("/game/join-room/{room_id}")
-async def join_room(room_id: str, user_id: int, db: Session = Depends(get_db)):
-    async with db.begin(): # شروع تراکنش اتمیک
-        # ۱. قفل کردن روم برای جلوگیری از ورود همزمان
+    """ورود کاربر به روم با مدیریت خودکار شروع بازی و جلوگیری از Race Condition"""
+    async with db.begin(): # شروع تراکنش برای تضمین امنیت مالی و وضعیت
+        # ۱. پیدا کردن و قفل کردن ردیف روم
         room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
-        
-        if not room or room.status != "waiting":
-            raise HTTPException(status_code=400, detail="روم در دسترس نیست")
 
-        # ۲. بررسی ظرفیت
+        if not room:
+            raise HTTPException(status_code=404, detail="روم یافت نشد")
+        
+        if room.status != "waiting":
+            raise HTTPException(status_code=400, detail="این روم در حال حاضر در حال بازی است یا تمام شده است")
+
         if room.current_players_count >= room.max_capacity:
             raise HTTPException(status_code=400, detail="روم پر است")
 
-        # ۳. افزایش تعداد بازیکن
-        room.current_players_count += 1
-        
-        # ثبت در جدول شرکت‌کنندگان
-        participant = RoomParticipant(room_id=room.id, user_id=user_id)
-        db.add(participant)
+        # ۲. بررسی وجود کاربر و موجودی (فرض بر این است که کاربر قبلاً ثبت‌نام کرده)
+        user = db.query(User).filter(User.id == user_id).with_for_update().first()
+        if not user:
+            raise HTTPException(status_code=404, detail="کاربر یافت نشد")
 
-        # ۴. چک کردن اینکه آیا با این ورود، روم پر شد؟
+        # ۳. بررسی اینکه آیا کاربر قبلاً در این روم بوده یا خیر
+        already_in = db.query(RoomParticipant).filter(
+            RoomParticipant.room_id == room_id, 
+            RoomParticipant.user_id == user_id
+        ).first()
+        
+        if already_in:
+            raise HTTPException(status_code=400, detail="شما قبلاً در این روم عضو شده‌اید")
+
+        # ۴. عملیات مالی (مثلاً مبلغ ورودی)
+        entry_fee = 10000 # مبلغ فرضی
+        if user.wallet_balance < entry_fee:
+            raise HTTPException(status_code=400, detail="موجودی کافی نیست")
+
+        user.wallet_balance -= entry_fee
+        
+        # ثبت تراکنش مالی
+        new_tx = Transaction(
+            user_id=user.id,
+            amount=-entry_fee,
+            type="entry_fee",
+            description=f"ورود به روم {room_id}"
+        )
+        db.add(new_tx)
+
+        # ۵. ثبت عضویت کاربر در روم
+        new_participant = RoomParticipant(room_id=room.id, user_id=user.id)
+        db.add(new_participant)
+
+        # ۶. به‌روزرسانی شمارنده بازیکنان
+        room.current_players_count += 1
+
+        # ۷. شروع خودکار بازی اگر ظرفیت پر شد
         if room.current_players_count == room.max_capacity:
             room.status = "playing"
-            # تولید اولین عدد راند به محض شروع بازی
-            room.current_round_target = generate_round_number()
             room.current_round = 1
-            
-            # در اینجا می‌توانی یک لاگ ثبت کنی که بازی شروع شد
-            room.room_logs = f"Game started at {datetime.utcnow()}"
+            room.current_round_target = generate_round_number() # تولید اولین عدد اعشاری
+            room.room_logs = f"Game started with target: {room.current_round_target}"
 
-    return {"status": "success", "message": "وارد شدید - بازی شروع شد" if room.status == "playing" else "وارد شدید - منتظر بازیکنان دیگر"}
+    return {
+        "status": "success", 
+        "message": "با موفقیت وارد شدید", 
+        "is_game_started": room.status == "playing"
+    }
 
 import random
 
