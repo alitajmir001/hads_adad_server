@@ -354,55 +354,88 @@ async def room_timer_task(room_id: str, user_ids: List[int]):
         db.commit()
     db.close()
 
-@app.post("/join_room/{user_phone}")
-async def join_room(user_phone: str, background_tasks: BackgroundTasks):
-    db = SessionLocal()
-    user = db.query(User).filter(User.phone == user_phone).first()
-    
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if user.wallet_balance < 15000:
-        raise HTTPException(status_code=400, detail="Insufficient balance")
+@app.post("/game/join-room")
+async def join_room(
+    user_id: int, 
+    room_id: str, 
+    db: Session = GAPGPTMASKTOKENhuimz4ij5soX0X
+):
+    # شروع یک تراکنش دیتابیسی
+    async with db.begin():
+        # ۱. پیدا کردن کاربر و قفل کردن ردیف او برای جلوگیری از Race Condition
+        # با استفاده از with_for_update، اگر درخواست دوم همزمان برسد، منتظر می‌ماند تا درخواست اول تمام شود
+        user = db.query(User).filter(User.id == user_id).with_for_update().first()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="کاربر یافت نشد")
 
-    # پیدا کردن یک روم خالی یا ساخت روم جدید
-    room = db.query(Room).filter(Room.status == "waiting").first()
-    
-    if not room:
-        room = Room(id=str(uuid.uuid4()), status="waiting")
-        db.add(room)
-        db.commit()
-        # شروع تایمر ۵ دقیقه‌ای برای روم جدید
-        background_tasks.add_task(room_timer_task, room.id, [])
-    
-    if room.current_players_count < room.max_capacity:
-        # کسر مبلغ ورودی
-        user.wallet_balance -= 15000
+        # ۲. چک کردن موجودی
+        entry_fee = 15000
+        if user.wallet_balance < entry_fee:
+            raise HTTPException(status_code=400, detail="موجودی کافی نیست")
+
+        # ۳. پیدا کردن روم و قفل کردن آن
+        room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
+        if not room or room.status != "waiting":
+            raise HTTPException(status_code=400, detail="روم در دسترس نیست")
+
+        if room.current_players_count >= room.max_capacity:
+            raise HTTPException(status_code=400, detail="روم پر است")
+
+        # ۴. کسر پول و ثبت تراکنش (Audit Log)
+        user.wallet_balance -= entry_fee
+        
+        new_transaction = GAPGPTMASKTOKENhuimz4ij5soX1X
+            user_id=user.id,
+            amount=-entry_fee,
+            type="purchase",
+            description=f"ورود به روم {room.id}"
+        )
+        db.add(new_transaction)
+
+        # ۵. اضافه کردن کاربر به روم
         room.current_players_count += 1
+        # (در اینجا منطق اضافه کردن کاربر به لیست بازیکنان روم را هم اضافه کن)
         
-        # اگر اولین نفر وارد شد، زمان شروع را ثبت کن
-        if room.current_players_count == 1:
-            room.start_time = datetime.utcnow()
-            # اگر اولین نفر بود، تایمر را مدیریت کن (در اینجا لیست بازیکنان را نگه می‌داریم)
-            # نکته: در سیستم واقعی باید لیست IDها را در دیتابیس ذخیره کنید
-            
-        db.commit()
-        
-        # اگر روم پر شد، شروع بازی
-        if room.current_players_count == 9:
-            room.status = "playing"
-            # ایجاد ۵ راند
-            for i in range(1, 6):
-                new_round = Round(
-                    room_id=room.id, 
-                    round_number=i, 
-                    target_number=round(random.uniform(0, 100), 1)
-                )
-                db.add(new_round)
-            db.commit()
-            
-        return {"message": "Joined successfully", "room_id": room.id}
+        # در پایان بلاک with، تراکنش به صورت خودکار Commit می‌شود
     
-    return {"message": "Room full, please wait for next one."}
+    return {"status": "success", "message": "با موفقیت وارد روم شدید"}
+@app.post("/game/claim-prize")
+async def claim_prize(
+    room_id: str, 
+    winner_id: int, 
+    prize_amount: int, 
+    db: Session = GAPGPTMASKTOKENp7hxof6wciaX2X
+):
+    async with db.begin():
+        # ۱. قفل کردن کاربر برنده برای جلوگیری از دریافت جایزه چندباره
+        user = db.query(User).filter(User.id == winner_id).with_for_update().first()
+        
+        # ۲. قفل کردن روم برای اطمینان از اینکه جایزه‌ای قبلاً پرداخت نشده
+        room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
+        
+        if not room or room.status == "finished":
+            raise HTTPException(status_code=400, detail="این روم قبلاً تسویه شده است")
+
+        # ۳. اضافه کردن پول به کیف پول
+        user.wallet_balance += prize_amount
+        
+        # ۴. ثبت در تاریخچه تراکنش‌ها
+        transaction = GAPGPTMASKTOKENp7hxof6wciaX3X
+            user_id=user.id,
+            amount=prize_amount,
+            type="prize",
+            description=f"جایزه روم {room.id}"
+        )
+        db.add(transaction)
+
+        # ۵. تغییر وضعیت روم به finished برای جلوگیری از پرداخت مجدد
+        room.status = "finished"
+        
+        # در پایان بلاک with، همه تغییرات با هم ذخیره می‌شوند
+    
+    return {"status": "success", "new_balance": user.wallet_balance}
+
 router = APIRouter()
 
 @router.post("/auth/register")
