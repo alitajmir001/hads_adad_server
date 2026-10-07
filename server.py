@@ -174,8 +174,11 @@ async def forgot_password(data: ForgotPasswordRequestSchema, db: Session = Depen
 
     return {"message": "کد تایید برای بازنشانی رمز عبور ارسال شد."}
 
+
+# حالت استاندارد در FastAPI
 @router.post("/auth/reset-password")
-async def reset_password(data: ResetPasswordSchema, db: Session = Depends(get_db)):):
+async def reset_password(data: ResetPasswordSchema, db: Session = Depends(get_db)):
+
     """
     مرحله ۲ و ۳: تایید کد و تغییر رمز عبور جدید
     """
