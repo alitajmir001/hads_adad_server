@@ -516,7 +516,7 @@ async def distribute_prizes(winners_data: list, room_id: str, db: Session=Depend
 
     db.commit()
     print("All prizes distributed successfully.")
-def setup_room_rounds(db: Session=Depends(get_db), room_id: str, total_rounds: int):
+def setup_room_rounds( room_id: str, total_rounds: int,db: Session=Depends(get_db)):
     for r in range(1, total_rounds + 1):
         # اینجا می‌توانی اعداد را از یک لیست مشخص یا تصادفی برداری
         correct_val = random.randint(1, 100) 
@@ -618,7 +618,7 @@ async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = D
 
 
 # سایر Endpointها مثل ساخت روم و مدیریت تایمر...
-async def finalize_game_and_payout(room_id: str, db: Session):
+async def finalize_game_and_payout(room_id: str, db: Session= Depends(get_db)):
     # قفل کردن روم برای جلوگیری از اجرای همزمان
     room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
 
