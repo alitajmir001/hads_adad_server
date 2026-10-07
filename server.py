@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, Request
 from datetime import datetime, timedelta
 from jose import jwt
 import uuid
+import os
 import httpx # برای ارسال درخواست به SMS.ir
 # ۱. خواندن آدرس از محیط (Environment Variable)
 # اگر در سیستم خودتان هستید و .env ندارید، یک آدرس پیش‌فرض برای تست می‌گذاریم
