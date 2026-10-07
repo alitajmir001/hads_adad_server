@@ -39,6 +39,15 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     phone = Column(String, unique=True, index=True)
     balance = Column(Numeric(12, 2), default=0.0)
+    password = Column(String)
+    full_name=Column(String,nullable=True)
+class OTPCode(Base):
+    __tablename__ = "otp_codes"
+    id = Column(Integer, primary_key=True, index=True)
+    phone = Column(String, index=True)
+    code = Column(String) # کد ۶ رقمی
+    expires_at = Column(DateTime) # زمان انقضا
+    is_used = Column(Boolean, default=False) # آیا این کد قبلاً استفاده شده؟
 
 class Room(Base):
     __tablename__ = "rooms"
@@ -166,7 +175,7 @@ async def forgot_password(data: ForgotPasswordRequestSchema, db: Session = Depen
     return {"message": "کد تایید برای بازنشانی رمز عبور ارسال شد."}
 
 @router.post("/auth/reset-password")
-async def reset_password(data: ResetPasswordSchema, db: Session = Depends(get_db)):
+async def reset_password(data: ResetPasswordSchema, db: Session = Depends(get_db)):):
     """
     مرحله ۲ و ۳: تایید کد و تغییر رمز عبور جدید
     """
@@ -181,21 +190,21 @@ async def reset_password(data: ResetPasswordSchema, db: Session = Depends(get_db
         OTPCode.code == data.code
     ).first()
 
+    # بررسی وجود کد و منقضی نبودن آن
     if not otp_record or otp_record.expires_at < datetime.utcnow():
         raise HTTPException(status_code=400, detail="کد تایید اشتباه یا منقضی شده است.")
 
-    # ۳. هش کردن پسورد جدید
-    ******* = pwd_context.hash(user_data.password) # pwd_context.hash
-
-    # ۴. آپدیت پسورد کاربر
+    # ۳. هش کردن پسورد جدید و آپدیت کاربر
     try:
-        user.password = *******
+        # نکته: حتماً باید از pwd_context استفاده کنید تا پسورد به صورت متن ساده ذخیره نشود
+        hashed_password = pwd_context.hash(data.new_password)
+        user.password = hashed_password
         
-        # ۵. پاک کردن کد OTP از دیتابیس برای امنیت بیشتر
+        # ۴. پاک کردن کد OTP از دیتابیس برای امنیت بیشتر (استفاده مجدد از آن نشود)
         db.delete(otp_record)
         
-        # ۶. (اختیاری اما مهم) غیرفعال کردن تمام نشست‌های قبلی کاربر
-        # چون رمز عوض شده، کاربر باید در تمام دستگاه‌ها دوباره لاگین کند
+        # ۵. غیرفعال کردن تمام نشست‌های قبلی کاربر (Logout از همه دستگاه‌ها)
+        # با توجه به مدل UserSession شما
         db.query(UserSession).filter(UserSession.user_id == user.id).update({"is_active": False})
         
         db.commit()
@@ -203,7 +212,8 @@ async def reset_password(data: ResetPasswordSchema, db: Session = Depends(get_db
     
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail="خطا در تغییر رمز عبور.")
+        # در محیط توسعه می‌توانید print(e) بگذارید تا خطا را در کنسول ببینید
+        raise HTTPException(status_code=500, detail="خطا در تغییر رمز عبور. لطفاً دوباره تلاش کنید.")
 
 # --- Helper Functions ---
 
