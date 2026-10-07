@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignK
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 import random
-from fastapi import APIRouter, HTTPException, status, Depend, Request
+from fastapi import APIRouter, HTTPException, status, Depends, Request
 from datetime import datetime, timedelta
 from jose import jwt
 import uuid
