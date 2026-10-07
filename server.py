@@ -56,7 +56,7 @@ class Room(Base):
     status = Column(String, default="waiting")  # waiting, playing, finished
     total_rounds_required = Column(Integer, default=5)
     total_prize_pool = Column(Numeric(12, 2), default=0.0)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
     game_start_time = Column(DateTime, nullable=True)
     participants = relationship("RoomParticipant", back_populates="room")
     start_time=Column(DateTime, nullable=True)
