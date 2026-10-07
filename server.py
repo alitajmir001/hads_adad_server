@@ -509,7 +509,7 @@ async def distribute_prizes(winners_data: list, room_id: str, db: Session=Depend
             user.balance += prize_amount
             print(f"Rank {rank} (User {u_id}) received: {prize_amount}")
         
-        elif user and rank not in payout_percentages:
+        else if user and rank not in payout_percentages:
             print(f"User {u_id} is rank {rank}, but no prize defined for this rank.")
 
     db.commit()
