@@ -448,21 +448,47 @@ def get_target_for_round(round_number: int) -> int:
     random.seed(round_number) # ثابت نگه داشتن عدد برای همه در یک راند مشخص
     return random.randint(1, 100)
 
-async def distribute_prize(winner_id: int, room_id: str, db: Session=Depends(get_db)):
-    """
-    پرداخت جایزه به برنده و کسر از استخر جایزه.
-    این تابع باید بسیار امن باشد.
+async def distribute_prize(winners_data: list, room_id: str, db: Session=Depends(get_db)):
+      """
+    توزیع جایزه بین نفرات اول، دوم و سوم.
+    winners_data: لیستی از دیکشنری‌ها شامل {'user_id': int, 'rank': int}
+    مثال: [{'user_id': 1, 'rank': 1}, {'user_id': 2, 'rank': 2}, {'user_id': 3, 'rank': 3}]
     """
     room = db.query(Room).filter(Room.id == room_id).first()
-    winner = db.query(User).filter(User.id == winner_id).first()
+    if not room:
+        print("Room not found")
+        return
+     # تبدیل کل مبلغ به Decimal برای دقت محاسباتی
+    total_pool = Decimal(str(room.total_prize_pool))
+
+    # تعریف درصدها برای هر رتبه
+    # رتبه 1: 60% | رتبه 2: 10% | رتبه 3: 5%
+    payout_percentages = {
+        1: Decimal('0.60'),
+        2: Decimal('0.10'),
+        3: Decimal('0.05')
+    }
     
-    if room and winner:
-        prize_amount = ((room.total_prize_pool // 100)*60)  # ۶۰ درصد برای برنده
-        winner.balance += prize_amount
-        db.commit()
-        # ۴۰ درصد باقی‌مانده به عنوان کارمزد سیستم در دیتابیس باقی می‌ماند
-        print(f"Winner {winner_id} received {prize_amount}")
-# فرض کن این تابع هنگام ساخت اتاق اجرا می‌شود
+    for winner_info in winners_data:
+        u_id = winner_info['user_id']
+        rank = winner_info['rank']
+        
+        user = db.query(User).filter(User.id == u_id).first()
+        
+        if user and rank in payout_percentages:
+            # محاسبه مبلغ بر اساس رتبه
+            share_percentage = payout_percentages[rank]
+            prize_amount = int(total_pool * share_percentage)
+            
+            # اضافه کردن به موجودی کاربر
+            user.balance += prize_amount
+            print(f"Rank {rank} (User {u_id}) received: {prize_amount}")
+        
+        elif user and rank not in payout_percentages:
+            print(f"User {u_id} is rank {rank}, but no prize defined for this rank.")
+
+    db.commit()
+    print("All prizes distributed successfully.")
 def setup_room_rounds(db: Session=Depends(get_db), room_id: str, total_rounds: int):
     for r in range(1, total_rounds + 1):
         # اینجا می‌توانی اعداد را از یک لیست مشخص یا تصادفی برداری
