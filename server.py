@@ -474,12 +474,14 @@ def get_target_for_round(round_number: int) -> int:
     return random.randint(1, 100)
 
 async def distribute_prizes(winners_data: list, room_id: str, db: Session=Depends(get_db)):
-      """
+    room = db.query(Room).filter(Room.id == room_id).first()
+     
+    """
     توزیع جایزه بین نفرات اول، دوم و سوم.
     winners_data: لیستی از دیکشنری‌ها شامل {'user_id': int, 'rank': int}
     مثال: [{'user_id': 1, 'rank': 1}, {'user_id': 2, 'rank': 2}, {'user_id': 3, 'rank': 3}]
     """
-    room = db.query(Room).filter(Room.id == room_id).first()
+   
     if not room:
         print("Room not found")
         return
