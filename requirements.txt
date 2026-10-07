@@ -7,5 +7,7 @@ pydantic
 httpx
 python-dotenv
 python-jose[cryptography]
+psycopg[binary]
+
 
 
