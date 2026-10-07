@@ -2,7 +2,7 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Numeric, DateTime
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session, relationship
+from sqlalchemy.orm import sessionmaker, Session, relationship,Mapped, mapped_column
 import random
 from fastapi import APIRouter, HTTPException, status, Depends, Request
 from datetime import datetime, timedelta
@@ -93,8 +93,8 @@ router = APIRouter()
 
 # --- Pydantic Schemas ---
 class UserRegisterSchema(Base):
-    phone: str
-    password: str
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    phone: Mapped[str] = mapped_column(String)
     name: Optional[str] = None
 
 class UserLoginSchema(Base):
