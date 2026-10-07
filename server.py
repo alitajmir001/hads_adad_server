@@ -448,7 +448,7 @@ def get_target_for_round(round_number: int) -> int:
     random.seed(round_number) # ثابت نگه داشتن عدد برای همه در یک راند مشخص
     return random.randint(1, 100)
 
-async def distribute_prize(winners_data: list, room_id: str, db: Session=Depends(get_db)):
+async def distribute_prizes(winners_data: list, room_id: str, db: Session=Depends(get_db)):
       """
     توزیع جایزه بین نفرات اول، دوم و سوم.
     winners_data: لیستی از دیکشنری‌ها شامل {'user_id': int, 'rank': int}
@@ -579,28 +579,53 @@ async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = D
     if not correct_round_data:
         raise HTTPException(status_code=404, detail="راند یافت نشد")
 
-    # ۴. چک کردن جواب کاربر با جواب ذخیره شده در دیتابیس
+    # ... (بخش‌های ابتدایی کد شما بدون تغییر)
+
     if answer == correct_round_data.correct_answer:
-        # کاربر درست گفته!
         participant.current_progress += 1
         
-        # بررسی برنده شدن (اگر راند‌های اتاق تمام شده باشد)
+        # چک کردن اینکه آیا بازی تمام شده است یا خیر
         room = db.query(Room).filter(Room.id == room_id).first()
-        if participant.current_progress >= room.total_rounds_required: # یا هر تعدادی که راند‌ها هستند
+        
+        # فرض می‌کنیم اگر تمام راندها تمام شد، بازی باید بسته شود
+        if participant.current_progress >= room.total_rounds_required:
             room.status = "finished"
-            await distribute_prize(user_id, room_id, db)
+            # نکته مهم: اینجا دیگر distribute_prizes  را صدا نمی‌زنیم!
+            # ما اینجا فقط می‌گوییم بازی تمام شد.
             db.commit()
-            return {"status": "winner"}
+            
+            # حالا باید تابعی را صدا بزنیم که برندگان را پیدا و جایزه را پخش کند
+            # این کار را می‌توان در یک Background Task یا بلافاصله بعد از commit انجام داد
+            await finalize_game_and_payout(room_id, db)
+            
+            return {"status": "game_over", "message": "بازی تمام شد و برندگان مشخص شدند"}
         
         db.commit()
         return {"status": "success", "next_round": participant.current_progress + 1}
-    
-    else:
-        # کاربر غلط گفته
-        return {
-        "status": "wrong_answer",
-        "current_round": current_round_num,
-        "message": "جواب اشتباه است، دوباره تلاش کنید"
-        }
+
 
 # سایر Endpointها مثل ساخت روم و مدیریت تایمر...
+async def finalize_game_and_payout(room_id: str, db: Session):
+    """
+    این تابع تمام شرکت‌کنندگان را بر اساس امتیاز (current_progress) 
+    مرتب کرده و ۳ نفر اول را برای دریافت جایزه انتخاب می‌کند.
+    """
+    # 1. پیدا کردن تمام شرکت‌کنندگان این اتاق و مرتب کردن آن‌ها از بیشترین امتیاز به کمترین
+    participants = db.query(RoomParticipant).filter(
+        RoomParticipant.room_id == room_id
+    ).order_by(RoomParticipant.current_progress.desc()).all()
+
+    # 2. آماده‌سازی لیست برندگان برای تابع توزیع جایزه
+    winners_data = []
+    
+    # ما فقط ۳ نفر اول را می‌خواهیم (اگر کمتر از ۳ نفر باشند، همان‌ها را برمی‌دارد)
+    for index, p in enumerate(participants[:3]):
+        winners_data.append({
+            'user_id': p.user_id,
+            'rank': index + 1  # رتبه اول می‌شود 1، دوم می‌شود 2 و...
+        })
+
+    # 3. اگر کسی برنده شد، جایزه را پخش کن
+    if winners_data:
+        # فراخوانی تابع جدیدی که در پیام قبلی برایت نوشتم
+        await distribute_prizes(winners_data, room_id, db)
