@@ -570,7 +570,7 @@ async def join_room(room_id: str, user_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/game/submit-answer")
-async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = Depends(get_db)):):
+async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = Depends(get_db)):
     room = db.query(Room).filter(Room.id == room_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="روم یافت نشد")
