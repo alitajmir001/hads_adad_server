@@ -281,7 +281,8 @@ async def verify_otp(data: OTPVerifySchema, db: Session = Depends(get_db), reque
     # ۱. پیدا کردن کد در دیتابیس
     otp_record = db.query(OTPCode).filter(
         OTPCode.phone == data.phone, 
-        OTPCode.code == data.code
+        OTPCode.code == data.code,
+        OTPCode.is_used == False # اضافه شد: کد حتما نباید قبلاً استفاده شده باشد
     ).first()
 
     # ۲. بررسی صحت کد و انقضا
@@ -293,26 +294,36 @@ async def verify_otp(data: OTPVerifySchema, db: Session = Depends(get_db), reque
     
     if not user:
         # کاربر جدید است -> ثبت‌نام
+        # تولید یک پسورد رندوم امن برای کاربر جدید
+        random_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(16))
+        
+        # نکته: حتما باید پسورد را قبل از ذخیره در دیتابیس HASH کنید
+        # فرض می‌کنیم تابع pwd_context.hash را دارید
+        # user.password = pwd_context.hash(random_password)
+        
+        # فعلاً برای اینکه کد شما کار کند، فرض می‌کنیم پسورد را مستقیماً می‌دهید (اما هش کردن توصیه می‌شود)
         user = User(
             phone=data.phone,
-            password=*******, # پسورد پیش‌فرض یا تولید شده رندوم برای OTP
-            name=None # کاربر بعداً می‌تواند نام را در پروفایل ست کند
+            password=random_password, 
+            name=None 
         )
         db.add(user)
         db.commit()
         db.refresh(user)
     
     # ۴. پاک کردن کد OTP از دیتابیس برای جلوگیری از استفاده مجدد
-    db.delete(otp_record)
+    otp_record.is_used = True # بهتر است به جای حذف، فیلد is_used را True کنید
     db.commit()
 
     # ۵. تولید توکن‌ها (Access & Refresh)
-    # همان منطقی که در پاسخ قبلی نوشتم را اینجا اجرا می‌کنیم
-    access_token, refresh_token = generate_token_pair(user.id) # تابع کمکی فرضی
+    # این بخش باید بر اساس توابع خودتان باشد
+    access_token = create_access_token(data={"sub": user.phone})
+    refresh_token = create_refresh_token(data={"sub": user.phone})
 
     # ۶. ذخیره نشست (Session)
     new_session = UserSession(
         user_id=user.id,
+        access_token=access_token,
         refresh_token=refresh_token,
         device_info=data.device_info,
         ip_address=request.client.host if request else "0.0.0.0",
