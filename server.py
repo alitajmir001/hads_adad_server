@@ -49,6 +49,7 @@ class Room(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     game_start_time = Column(DateTime, nullable=True)
     participants = relationship("RoomParticipant", back_populates="room")
+    start_time=Column(DateTime, nullable=True)
 
 class RoomParticipant(Base):
     __tablename__ = "room_participants"
@@ -58,7 +59,7 @@ class RoomParticipant(Base):
     
     # پیشرفت هر کاربر به صورت جداگانه مدیریت می‌شود
     current_progress = Column(Integer, default=0) 
-    is_eliminated = Column(Boolean, default=False)
+    
     
     room = relationship("Room", back_populates="participants")
     user = relationship("User")
@@ -541,91 +542,82 @@ async def join_room(room_id: str, user_id: int, db: Session = Depends(get_db)):
     
     return {"message": "با موفقیت به روم پیوستید"}
 
+
 @app.post("/game/submit-answer")
-async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = Depends(get_db)):
-    # 1. پیدا کردن روم
+async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = Depends(get_db)):):
     room = db.query(Room).filter(Room.id == room_id).first()
-
     if not room:
-        raise HTTPException(
-            status_code=404,
-            detail="روم یافت نشد"
-        )
+        raise HTTPException(status_code=404, detail="روم یافت نشد")
 
-    # 2. بررسی وضعیت بازی
-    if room.status != "playing":
-        raise HTTPException(
-            status_code=400,
-            detail="بازی هنوز شروع نشده یا به پایان رسیده است"
-        )
-    # ۱. پیدا کردن شرکت‌کننده
+    # بررسی اتمام زمان (تایمر)
+    time_limit = room.total_rounds_required 
+    elapsed_time = (datetime.now() - room.start_time).total_seconds() / 60
+    
+    if elapsed_time >= time_limit:
+        # اگر زمان تمام شده ولی هنوز وضعیت finished نشده، بازی را تمام کن
+        if room.status != "finished":
+            room.status = "finished"
+            db.commit()
+            await finalize_game_and_payout(room_id, db)
+        raise HTTPException(status_code=400, detail="زمان بازی تمام شده است")
+
     participant = db.query(RoomParticipant).filter(
         RoomParticipant.room_id == room_id, 
         RoomParticipant.user_id == user_id
     ).first()
 
-    if not participant or participant.is_eliminated:
-        raise HTTPException(status_code=400, detail="شما در رقابت نیستید")
-
-    # ۲. پیدا کردن راند فعلی کاربر
-    current_round_num = participant.current_progress + 1
-
-    # ۳. مراجعه به جدول RoomRound برای پیدا کردن جواب درست
-    correct_round_data = db.query(RoomRound).filter(
-        RoomRound.room_id == room_id,
-        RoomRound.round_number == current_round_num
-    ).first()
-
-    if not correct_round_data:
-        raise HTTPException(status_code=404, detail="راند یافت نشد")
-
-    # ... (بخش‌های ابتدایی کد شما بدون تغییر)
+    # ... (بخش‌های مربوط به چک کردن جواب درست) ...
 
     if answer == correct_round_data.correct_answer:
         participant.current_progress += 1
         
-        # چک کردن اینکه آیا بازی تمام شده است یا خیر
-        room = db.query(Room).filter(Room.id == room_id).first()
-        
-        # فرض می‌کنیم اگر تمام راندها تمام شد، بازی باید بسته شود
-        if participant.current_progress >= room.total_rounds_required:
+        # بررسی اینکه آیا این نفر، نفر سوم برنده است؟
+        # ما باید تعداد کسانی که راندها را تمام کرده‌اند بشماریم
+        winners_count = db.query(RoomParticipant).filter(
+            RoomParticipant.room_id == room_id,
+            RoomParticipant.current_progress >= room.total_rounds_required
+        ).count()
+
+        if winners_count >= 3:
+            # اگر تعداد برندگان به ۳ نفر رسید، بازی را تمام کن
             room.status = "finished"
-            # نکته مهم: اینجا دیگر distribute_prizes  را صدا نمی‌زنیم!
-            # ما اینجا فقط می‌گوییم بازی تمام شد.
             db.commit()
-            
-            # حالا باید تابعی را صدا بزنیم که برندگان را پیدا و جایزه را پخش کند
-            # این کار را می‌توان در یک Background Task یا بلافاصله بعد از commit انجام داد
             await finalize_game_and_payout(room_id, db)
-            
-            return {"status": "game_over", "message": "بازی تمام شد و برندگان مشخص شدند"}
-        
+            return {"status": "game_over", "message": "تعداد برندگان تکمیل شد"}
+
         db.commit()
         return {"status": "success", "next_round": participant.current_progress + 1}
+    
+    # ... (بقیه کد)
 
 
 # سایر Endpointها مثل ساخت روم و مدیریت تایمر...
 async def finalize_game_and_payout(room_id: str, db: Session):
-    """
-    این تابع تمام شرکت‌کنندگان را بر اساس امتیاز (current_progress) 
-    مرتب کرده و ۳ نفر اول را برای دریافت جایزه انتخاب می‌کند.
-    """
-    # 1. پیدا کردن تمام شرکت‌کنندگان این اتاق و مرتب کردن آن‌ها از بیشترین امتیاز به کمترین
+    # قفل کردن روم برای جلوگیری از اجرای همزمان
+    room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
+
+    if not room or room.status == "finished":
+        # اگر قبلاً توسط تایمر یا نفر سوم تمام شده بود، دوباره وارد اینجا نشو
+        return 
+
+    # تغییر وضعیت به finished برای اینکه هیچ درخواست دیگری وارد نشود
+    room.status = "finished"
+    db.commit()
+
+    # پیدا کردن برندگان بر اساس امتیاز (از زیاد به کم)
     participants = db.query(RoomParticipant).filter(
         RoomParticipant.room_id == room_id
     ).order_by(RoomParticipant.current_progress.desc()).all()
 
-    # 2. آماده‌سازی لیست برندگان برای تابع توزیع جایزه
     winners_data = []
-    
-    # ما فقط ۳ نفر اول را می‌خواهیم (اگر کمتر از ۳ نفر باشند، همان‌ها را برمی‌دارد)
+    # فقط نفراتی را بردار که واقعاً راندها را تمام کرده‌اند (حتی اگر کمتر از ۳ نفر باشند)
     for index, p in enumerate(participants[:3]):
-        winners_data.append({
-            'user_id': p.user_id,
-            'rank': index + 1  # رتبه اول می‌شود 1، دوم می‌شود 2 و...
-        })
+        if p.current_progress >= room.total_rounds_required:
+            winners_data.append({
+                'user_id': p.user_id,
+                'rank': index + 1
+            })
 
-    # 3. اگر کسی برنده شد، جایزه را پخش کن
+    # توزیع مبالغ (۶۰٪، ۱۰٪، ۵٪)
     if winners_data:
-        # فراخوانی تابع جدیدی که در پیام قبلی برایت نوشتم
         await distribute_prizes(winners_data, room_id, db)
