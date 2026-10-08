@@ -33,7 +33,17 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 app = FastAPI()
+# ۱. تنظیم دیتابیس (اگر آدرس دیتابیس را در متغیر محیطی داری، از os.getenv استفاده کن)
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./hads_adad.db") 
 
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 # --- مدل‌های دیتابیس اصلاح شده ---
 
 class Base(DeclarativeBase):
@@ -538,12 +548,7 @@ def setup_room_rounds( room_id: str, total_rounds: int,db: Session=Depends(get_d
 # --- API Endpoints ---
 
 # Dependency برای گرفتن session در مسیرها
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
 
 @app.post("/rooms/join")
 async def join_room(room_id: str, user_id: int, db: Session = Depends(get_db)):
