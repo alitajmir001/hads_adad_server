@@ -35,53 +35,87 @@ app = FastAPI()
 
 # --- مدل‌های دیتابیس اصلاح شده ---
 
+class Base(DeclarativeBase):
+    pass
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     phone = Column(String, unique=True, index=True)
     balance = Column(Numeric(12, 2), default=0.0)
     password = Column(String)
-    full_name=Column(String,nullable=True)
+    full_name = Column(String, nullable=True)
+
 class OTPCode(Base):
     __tablename__ = "otp_codes"
     id = Column(Integer, primary_key=True, index=True)
     phone = Column(String, index=True)
-    code = Column(String) # کد ۶ رقمی
-    expires_at = Column(DateTime) # زمان انقضا
-    is_used = Column(Boolean, default=False) # آیا این کد قبلاً استفاده شده؟
+    code = Column(String)
+    expires_at = Column(DateTime)
+    is_used = Column(Boolean, default=False)
 
 class Room(Base):
     __tablename__ = "rooms"
     id = Column(String, primary_key=True, index=True)
-    status = Column(String, default="waiting")  # waiting, playing, finished
+    status = Column(String, default="waiting") 
     total_rounds_required = Column(Integer, default=5)
     total_prize_pool = Column(Numeric(12, 2), default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     game_start_time = Column(DateTime, nullable=True)
+    start_time = Column(DateTime, nullable=True)
+    
+    # روابط (Relationships)
     participants = relationship("RoomParticipant", back_populates="room")
-    start_time=Column(DateTime, nullable=True)
 
 class RoomParticipant(Base):
     __tablename__ = "room_participants"
     id = Column(Integer, primary_key=True, index=True)
     room_id = Column(String, ForeignKey("rooms.id"))
     user_id = Column(Integer, ForeignKey("users.id"))
-    
-    # پیشرفت هر کاربر به صورت جداگانه مدیریت می‌شود
     current_progress = Column(Integer, default=0) 
-    
     
     room = relationship("Room", back_populates="participants")
     user = relationship("User")
+
 class RoomRound(Base):
-    """ذخیره اعداد درست برای هر راند در هر اتاق"""
     __tablename__ = "room_rounds"
     id = Column(Integer, primary_key=True, index=True)
     room_id = Column(String, ForeignKey("rooms.id"))
-    round_number = Column(Integer) # شماره راند (۱، ۲، ۳، ...)
-    correct_answer = Column(Integer) # عدد درست برای این راند
-
+    round_number = Column(Integer)
+    correct_answer = Column(Integer)
     room = relationship("Room")
+
+# --- ۲. بخش اسکیماها (Pydantic Schemas) ---
+
+class TokenResponse(BaseModel): # فقط یک بار و به عنوان BaseModel
+    access_token: str
+    refresh_token: str
+    token_type: str
+
+class UserRegisterSchema(BaseModel):
+    phone: str
+    name: Optional[str] = None
+
+class UserLoginSchema(BaseModel):
+    phone: str
+    password: str
+    device_info: Optional[str] = "Unknown Device"
+
+class OTPRequestSchema(BaseModel):
+    phone: str
+
+class OTPVerifySchema(BaseModel):
+    phone: str
+    code: str
+    device_info: Optional[str] = "Unknown Device"
+
+class ForgotPasswordRequestSchema(BaseModel):
+    phone: str
+
+class ResetPasswordSchema(BaseModel):
+    phone: str
+    code: str
+    new_password: str
 
 # --- توابع کمکی (Helper Functions) ---
 
@@ -91,21 +125,7 @@ class RoomRound(Base):
 
 router = APIRouter()
 
-# --- Pydantic Schemas ---
-class UserRegisterSchema(Base):
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    phone: Mapped[str] = mapped_column(String)
-    name: Optional[str] = None
 
-class UserLoginSchema(Base):
-    phone: Mapped[str] = mapped_column(String)
-    password: Mapped[str] = mapped_column(String)
-    device_info: Optional[str] = "Unknown Device"
-
-class TokenResponse(Base):
-    access_token: Mapped[str] = mapped_column(String)
-    refresh_token: Mapped[str] = mapped_column(String)
-    token_type: Mapped[str] = mapped_column(String)
 
 
 # فرض بر این است که مدل‌ها و تنظیمات قبلی ایمپورت شده‌اند
@@ -118,22 +138,7 @@ SMS_USERNAME = os.getenv("SMS_USERNAME")
 SMS_PASSWORD = os.getenv("SMS_PASSWORD")
 SMS_LINE = os.getenv("SMS_LINE")
 
-# --- Schemas ---
-class OTPRequestSchema(Base):
-    phone: str
 
-class OTPVerifySchema(Base):
-    phone: Mapped[str] = mapped_column(String)
-    code: Mapped[str] = mapped_column(String)
-    device_info: Optional[str] = "Unknown Device"
-# --- Schemas برای فراموشی رمز ---
-class ForgotPasswordRequestSchema(Base):
-    phone: Mapped[str] = mapped_column(String)
-
-class ResetPasswordSchema(Base):
-    phone: Mapped[str] = mapped_column(String)
-    code: Mapped[str] = mapped_column(String)
-    new_password: Mapped[str] = mapped_column(String)
 
 # --- Routes برای فراموشی رمز ---
 
