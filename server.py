@@ -98,14 +98,14 @@ class UserRegisterSchema(Base):
     name: Optional[str] = None
 
 class UserLoginSchema(Base):
-    phone: str
-    password: str
+    phone: Mapped[str] = mapped_column(String)
+    password: Mapped[str] = mapped_column(String)
     device_info: Optional[str] = "Unknown Device"
 
 class TokenResponse(Base):
-    access_token: str
-    refresh_token: str
-    token_type: str
+    access_token: Mapped[str] = mapped_column(String)
+    refresh_token: Mapped[str] = mapped_column(String)
+    token_type: Mapped[str] = mapped_column(String)
 
 
 # فرض بر این است که مدل‌ها و تنظیمات قبلی ایمپورت شده‌اند
@@ -123,17 +123,17 @@ class OTPRequestSchema(Base):
     phone: str
 
 class OTPVerifySchema(Base):
-    phone: str
-    code: str
+    phone: Mapped[str] = mapped_column(String)
+    code: Mapped[str] = mapped_column(String)
     device_info: Optional[str] = "Unknown Device"
 # --- Schemas برای فراموشی رمز ---
 class ForgotPasswordRequestSchema(Base):
-    phone: str
+    phone: Mapped[str] = mapped_column(String)
 
 class ResetPasswordSchema(Base):
-    phone: str
-    code: str
-    new_password: str
+    phone: Mapped[str] = mapped_column(String)
+    code: Mapped[str] = mapped_column(String)
+    new_password: Mapped[str] = mapped_column(String)
 
 # --- Routes برای فراموشی رمز ---
 
