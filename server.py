@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, Request
 from datetime import datetime, timedelta
 from jose import jwt
 import uuid
+from pydantic import BaseModel
 import os
 import httpx # برای ارسال درخواست به SMS.ir
 # ۱. خواندن آدرس از محیط (Environment Variable)
