@@ -1,8 +1,7 @@
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Numeric, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session, relationship,Mapped, mapped_column
+from sqlalchemy.orm import sessionmaker, Session, relationship,Mapped, mapped_column,DeclarativeBase
 import random
 from fastapi import APIRouter, HTTPException, status, Depends, Request
 from datetime import datetime, timedelta
