@@ -13,17 +13,18 @@ import os
 import httpx # برای ارسال درخواست به SMS.ir
 # ۱. خواندن آدرس از محیط (Environment Variable)
 # اگر در سیستم خودتان هستید و .env ندارید، یک آدرس پیش‌فرض برای تست می‌گذاریم
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/dbname")
+# DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/dbname")
 # ۲. تغییر در Engine
 # در SQLite ما استفاده از check_same_thread=False داشتیم، اما در Postgres نیازی به آن نیست.
-if DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(
-        DATABASE_URL, connect_args={"check_same_thread": False}
-    )
+db_url = settings.DATABASE_URL
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+engine = create_engine(db_url) 
 else:
     # برای PostgreSQL
     engine = create_engine(
-        DATABASE_URL, 
+        db_url, 
         # pool_size و max_overflow برای مدیریت بهتر تعداد اتصال‌ها در سرورهای سنگین
         pool_size=10, 
         max_overflow=20
