@@ -274,8 +274,8 @@ async def request_otp(data: OTPRequestSchema, db: Session = Depends(get_db)):
             detail="  این شماره موبایل قبلاً ثبت شده است وارد بخش لاگین شوید."
         )
         User.OTPCode(
-            code = otp_code
-            expires_at = datetime.utcnow() + timedelta(minutes=2)
+            code = otp_code,
+            expires_at = datetime.utcnow() + timedelta(minutes=2),
         )
     else:
         user=User(
@@ -287,7 +287,7 @@ async def request_otp(data: OTPRequestSchema, db: Session = Depends(get_db)):
          new_otp = OTPCode(
             phone=data.phone,
             code=otp_code,
-            expires_at=datetime.utcnow() + timedelta(minutes=2)
+            expires_at=datetime.utcnow() + timedelta(minutes=2),
          )
         
    
