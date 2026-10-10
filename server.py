@@ -13,41 +13,53 @@ import os
 import httpx # برای ارسال درخواست به SMS.ir
 # ۱. خواندن آدرس از محیط (Environment Variable)
 # اگر در سیستم خودتان هستید و .env ندارید، یک آدرس پیش‌فرض برای تست می‌گذاریم
-# DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/dbname")
-# ۲. تغییر در Engine
-# در SQLite ما استفاده از check_same_thread=False داشتیم، اما در Postgres نیازی به آن نیست.
-# --- تنظیمات محیطی (Environment Variables) ---
-# حتماً این‌ها را در پنل Render ست کنید
-SECRET_KEY = os.getenv("SECRET_KEY", "your-fallback-secret-for-dev-only")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
+import os
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from fastapi import Depends
+
+# 1. دریافت URL از محیط Render
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# اصلاح پروتکل دیتابیس برای SQLAlchemy 2.0
-if DATABASE_URL:
-    # اگر آدرس خیلی عجیب بود، اینجا گیر می‌کند و پیام واضح می‌دهد
-    if ":port/" in DATABASE_URL:
-        raise ValueError("خطا: در DATABASE_URL به جای عدد پورت، کلمه 'port' نوشته شده است!")
-    
-    if DATABASE_URL.startswith("postgres://"):
-        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+# اگر آدرس با postgres:// شروع شده باشد، آن را به postgresql:// اصلاح می‌کنیم (برای سازگاری با SQLAlchemy 2.0)
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# --- تنظیمات دیتابیس ---
-engine = create_engine(DATABASE_URL)
+if not DATABASE_URL:
+    raise ValueError("❌ ERROR: DATABASE_URL is not set in Environment Variables!")
+
+# 2. تنظیمات Engine با قابلیت مدیریت اتصال
+engine = create_engine(
+    DATABASE_URL, 
+    pool_pre_ping=True,  # این خط بسیار مهم است: قبل از هر استفاده، سلامت اتصال را چک می‌کند
+    pool_size=10,        # تعداد اتصالات همزمان که باز نگه می‌دارد
+    max_overflow=20      # اجازه می‌دهد در اوج شلوغی، اتصالات بیشتری ساخته شود
+)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+# 3. تابع جادویی Dependency Injection (این بخش کلید اصلی است)
+def get_db():
+    """
+    این تابع باعث می‌شود هر درخواست، یک Session تازه بگیرد 
+    و بلافاصله بعد از اتمام کار، آن را ببندد (Close).
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    except Exception as e:
+        print(f"❌ Database Error during request: {e}")
+        raise e
+    finally:
+        db.close()  # تضمین می‌کند که کانکشن حتماً بسته می‌شود، حتی اگر خطا رخ دهد
 
 
 
 app = FastAPI()
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-# --- مدل‌های دیتابیس اصلاح شده ---
+
 
 class Base(DeclarativeBase):
     pass
