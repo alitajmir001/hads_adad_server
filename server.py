@@ -309,7 +309,7 @@ async def request_otp(data: OTPRequestSchema, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="خطا در ارسال پیامک. لطفا دوباره تلاش کنید.")
 
     # return {"message": "کد تایید ارسال شد."}
-     return {"message": "شماره تلفن با موفقیت ثبت شد."}
+    return {"message": "شماره تلفن با موفقیت ثبت شد."}
 
 @router.post("/auth/verify-otp")
 async def verify_otp(data: OTPVerifySchema, db: Session = Depends(get_db), request: Request = None):
