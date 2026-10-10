@@ -24,11 +24,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # اصلاح پروتکل دیتابیس برای SQLAlchemy 2.0
-if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL is not set in environment variables!")
+if DATABASE_URL:
+    # اگر آدرس خیلی عجیب بود، اینجا گیر می‌کند و پیام واضح می‌دهد
+    if ":port/" in DATABASE_URL:
+        raise ValueError("خطا: در DATABASE_URL به جای عدد پورت، کلمه 'port' نوشته شده است!")
+    
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # --- تنظیمات دیتابیس ---
 engine = create_engine(DATABASE_URL)
