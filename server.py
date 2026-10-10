@@ -56,14 +56,17 @@ class User(Base):
     balance = Column(Numeric(12, 2), default=0.0)
     password = Column(String)
     full_name = Column(String, nullable=True)
+    otpcode = relationship("OTPCode", back_populates="user")
 
 class OTPCode(Base):
     __tablename__ = "otp_codes"
     id = Column(Integer, primary_key=True, index=True)
-    phone = Column(String, index=True)
+    user_id=Column(Integer, ForeignKey("users.id"))
     code = Column(String)
     expires_at = Column(DateTime)
     is_used = Column(Boolean, default=False)
+    user = relationship("User", back_populates="otpcode")
+    
 
 class Room(Base):
     __tablename__ = "rooms"
@@ -262,33 +265,51 @@ async def request_otp(data: OTPRequestSchema, db: Session = Depends(get_db)):
     """
     مرحله اول: درخواست کد تایید برای شماره موبایل
     """
-    # ۱. تولید کد ۴ یا ۵ رقمی
+      # ۱. تولید کد ۴ یا ۵ رقمی
     otp_code = str(random.randint(1000, 9999))
-    
-    # ۲. ذخیره در دیتابیس (اگر از قبل بود، آپدیت شود)
-    existing_otp = db.query(OTPCode).filter(OTPCode.phone == data.phone).first()
-    
-    if existing_otp:
-        existing_otp.code = otp_code
-        existing_otp.expires_at = datetime.utcnow() + timedelta(minutes=2)
+    user=db.query(User).filter(User.phone==data.phone).first()
+    if user:
+        raise HTTPException(
+            status_code=400, 
+            detail="  این شماره موبایل قبلاً ثبت شده است وارد بخش لاگین شوید."
+        )
+        User.OTPCode(
+            code = otp_code
+            expires_at = datetime.utcnow() + timedelta(minutes=2)
+        )
     else:
-        new_otp = OTPCode(
+        user=User(
+           phone=data.phone,
+           balance=0,
+        
+        
+        )
+         new_otp = OTPCode(
             phone=data.phone,
             code=otp_code,
             expires_at=datetime.utcnow() + timedelta(minutes=2)
-        )
-        db.add(new_otp)
+         )
+        
+   
+  
+    
+    # ۲. ذخیره در دیتابیس (اگر از قبل بود، آپدیت شود)
+    
+    
+   
+    db.add(new_otp)
     
     db.commit()
 
     # ۳. ارسال پیامک
-    sms_sent = await send_sms_otp(data.phone, otp_code)
+    # sms_sent = await send_sms_otp(data.phone, otp_code)
     
     if not sms_sent:
         # در محیط تست ممکن است SMS کار نکند، اما در محیط واقعی خطا بدهد
         raise HTTPException(status_code=500, detail="خطا در ارسال پیامک. لطفا دوباره تلاش کنید.")
 
-    return {"message": "کد تایید ارسال شد."}
+    # return {"message": "کد تایید ارسال شد."}
+     return {"message": "شماره تلفن با موفقیت ثبت شد."}
 
 @router.post("/auth/verify-otp")
 async def verify_otp(data: OTPVerifySchema, db: Session = Depends(get_db), request: Request = None):
@@ -309,24 +330,24 @@ async def verify_otp(data: OTPVerifySchema, db: Session = Depends(get_db), reque
     # ۳. بررسی اینکه کاربر وجود دارد یا باید ساخته شود
     user = db.query(User).filter(User.phone == data.phone).first()
     
-    if not user:
-        # کاربر جدید است -> ثبت‌نام
-        # تولید یک پسورد رندوم امن برای کاربر جدید
-        random_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(16))
+    # if not user:
+    #     # کاربر جدید است -> ثبت‌نام
+    #     # تولید یک پسورد رندوم امن برای کاربر جدید
+    #     random_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(16))
         
-        # نکته: حتما باید پسورد را قبل از ذخیره در دیتابیس HASH کنید
-        # فرض می‌کنیم تابع pwd_context.hash را دارید
-        # user.password = pwd_context.hash(random_password)
+    #     # نکته: حتما باید پسورد را قبل از ذخیره در دیتابیس HASH کنید
+    #     # فرض می‌کنیم تابع pwd_context.hash را دارید
+    #     # user.password = pwd_context.hash(random_password)
         
-        # فعلاً برای اینکه کد شما کار کند، فرض می‌کنیم پسورد را مستقیماً می‌دهید (اما هش کردن توصیه می‌شود)
-        user = User(
-            phone=data.phone,
-            password=random_password, 
-            name=None 
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+    #     # فعلاً برای اینکه کد شما کار کند، فرض می‌کنیم پسورد را مستقیماً می‌دهید (اما هش کردن توصیه می‌شود)
+    #     user = User(
+    #         phone=data.phone,
+    #         password=random_password, 
+    #         name=None 
+    #     )
+    #     db.add(user)
+    #     db.commit()
+    #     db.refresh(user)
     
     # ۴. پاک کردن کد OTP از دیتابیس برای جلوگیری از استفاده مجدد
     otp_record.is_used = True # بهتر است به جای حذف، فیلد is_used را True کنید
@@ -334,8 +355,8 @@ async def verify_otp(data: OTPVerifySchema, db: Session = Depends(get_db), reque
 
     # ۵. تولید توکن‌ها (Access & Refresh)
     # این بخش باید بر اساس توابع خودتان باشد
-    access_token = create_access_token(data={"sub": user.phone})
-    refresh_token = create_refresh_token(data={"sub": user.phone})
+    access_token = create_access_token(data={"sub": data.phone})
+    refresh_token = create_refresh_token(data={"sub": data.phone})
 
     # ۶. ذخیره نشست (Session)
     new_session = UserSession(
