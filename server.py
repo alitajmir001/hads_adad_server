@@ -447,7 +447,7 @@ async def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
     ورود کاربر و تولید توکن‌های دسترسی
     """
     # ۱. پیدا کردن کاربر
-    user = db.query(User).filter(User.phone == login_data.phone).first()
+    user = db.query(User).filter(User.phone == login_data.phone,User.password==login_data.password).first()
     
     # ۲. بررسی وجود کاربر و صحت پسورد
     if not user or not pwd_context.verify(login_data.password, user.password):
