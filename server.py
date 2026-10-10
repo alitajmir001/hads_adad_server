@@ -284,10 +284,10 @@ async def request_otp(data: OTPRequestSchema, db: Session = Depends(get_db)):
         
         
         )
-         new_otp = OTPCode(
-            phone=data.phone,
-            code=otp_code,
-            expires_at=datetime.utcnow() + timedelta(minutes=2),
+        new_otp = OTPCode(
+           phone=data.phone,
+           code=otp_code,
+           expires_at=datetime.utcnow() + timedelta(minutes=2),
          )
         
    
