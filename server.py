@@ -16,29 +16,29 @@ import httpx # برای ارسال درخواست به SMS.ir
 # DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/dbname")
 # ۲. تغییر در Engine
 # در SQLite ما استفاده از check_same_thread=False داشتیم، اما در Postgres نیازی به آن نیست.
-db_url = settings.DATABASE_URL
-if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql://", 1)
+# --- تنظیمات محیطی (Environment Variables) ---
+# حتماً این‌ها را در پنل Render ست کنید
+SECRET_KEY = os.getenv("SECRET_KEY", "your-fallback-secret-for-dev-only")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-engine = create_engine(db_url) 
-else:
-    # برای PostgreSQL
-    engine = create_engine(
-        db_url, 
-        # pool_size و max_overflow برای مدیریت بهتر تعداد اتصال‌ها در سرورهای سنگین
-        pool_size=10, 
-        max_overflow=20
-    )
-# ۳. بقیه موارد مثل قبل باقی می‌مانند
+# اصلاح پروتکل دیتابیس برای SQLAlchemy 2.0
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is not set in environment variables!")
+
+# --- تنظیمات دیتابیس ---
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-app = FastAPI()
-# ۱. تنظیم دیتابیس (اگر آدرس دیتابیس را در متغیر محیطی داری، از os.getenv استفاده کن)
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./hads_adad.db") 
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+app = FastAPI()
+
 def get_db():
     db = SessionLocal()
     try:
