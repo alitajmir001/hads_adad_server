@@ -18,7 +18,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi import Depends
-
+from routers import auth
 # 1. دریافت URL از محیط Render
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -58,7 +58,8 @@ def get_db():
 
 
 app = FastAPI()
-
+app.include_router(auth.router)
+router = APIRouter()
 
 
 class Base(DeclarativeBase):
@@ -152,7 +153,6 @@ class ResetPasswordSchema(BaseModel):
 # فرض می‌کنیم این‌ها از فایل مدل‌ها و تنظیمات شما وارد می‌شوند
 # from database import get_db, User, UserSession, pwd_context, SECRET_KEY, ALGORITHM
 
-router = APIRouter()
 
 
 
