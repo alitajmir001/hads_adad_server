@@ -170,7 +170,7 @@ SMS_LINE = os.getenv("SMS_LINE")
 
 # --- Routes برای فراموشی رمز ---
 
-@router.post("/auth/forgot-password")
+@app.post("/auth/forgot-password")
 async def forgot_password(data: ForgotPasswordRequestSchema, db: Session = Depends(get_db)):
     """
     مرحله ۱: کاربر شماره موبایل را می‌دهد و کد تایید برایش ارسال می‌شود
@@ -210,7 +210,7 @@ async def forgot_password(data: ForgotPasswordRequestSchema, db: Session = Depen
 
 
 # حالت استاندارد در FastAPI
-@router.post("/auth/reset-password")
+@app.post("/auth/reset-password")
 async def reset_password(data: ResetPasswordSchema, db: Session = Depends(get_db)):
 
     """
@@ -274,7 +274,7 @@ async def send_sms_otp(phone: str, code: str):
 
 # --- Routes ---
 
-@router.post("/auth/request-otp")
+@app.post("/auth/request-otp")
 async def request_otp(data: OTPRequestSchema, db: Session = Depends(get_db)):
     """
     مرحله اول: درخواست کد تایید برای شماره موبایل
@@ -325,7 +325,7 @@ async def request_otp(data: OTPRequestSchema, db: Session = Depends(get_db)):
     # return {"message": "کد تایید ارسال شد."}
     return {"message": "شماره تلفن با موفقیت ثبت شد."}
 
-@router.post("/auth/verify-otp")
+@app.post("/auth/verify-otp")
 async def verify_otp(data: OTPVerifySchema, db: Session = Depends(get_db), request: Request = None):
     """
     مرحله دوم: تایید کد و ورود یا ثبت‌نام نهایی
@@ -407,7 +407,7 @@ def generate_token_pair(user_id: int):
 
 # --- Implementation ---
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
+@app.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserRegisterSchema, db: Session = Depends(get_db)):
     """
     ثبت‌نام کاربر جدید
@@ -440,7 +440,7 @@ async def register(user_data: UserRegisterSchema, db: Session = Depends(get_db))
         db.rollback()
         raise HTTPException(status_code=500, detail="خطا در ثبت‌نام کاربر.")
 
-@router.post("/login", response_model=TokenResponse)
+@app.post("/login", response_model=TokenResponse)
 async def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
     """
     ورود کاربر و تولید توکن‌های دسترسی
@@ -499,7 +499,7 @@ async def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
         "token_type": "bearer"
     }
 
-@router.post("/logout")
+@app.post("/logout")
 async def logout(current_user_id: int, db: Session = Depends(get_db)):
     """
     خروج از حساب (غیرفعال کردن نشست فعلی)
