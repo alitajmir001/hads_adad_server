@@ -14,13 +14,13 @@ import httpx # برای ارسال درخواست به SMS.ir
 # ۱. خواندن آدرس از محیط (Environment Variable)
 # اگر در سیستم خودتان هستید و .env ندارید، یک آدرس پیش‌فرض برای تست می‌گذاریم
 import os
-from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi import Depends
+from database import engine, Base
 # 1. دریافت URL از محیط Render
 DATABASE_URL = os.getenv("DATABASE_URL")
-
+Base.metadata.create_all(bind=engine)
 # اگر آدرس با postgres:// شروع شده باشد، آن را به postgresql:// اصلاح می‌کنیم (برای سازگاری با SQLAlchemy 2.0)
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
