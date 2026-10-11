@@ -17,10 +17,10 @@ import os
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi import Depends
-from database import engine, Base
+
 # 1. دریافت URL از محیط Render
 DATABASE_URL = os.getenv("DATABASE_URL")
-Base.metadata.create_all(bind=engine)
+
 # اگر آدرس با postgres:// شروع شده باشد، آن را به postgresql:// اصلاح می‌کنیم (برای سازگاری با SQLAlchemy 2.0)
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -148,7 +148,7 @@ class ResetPasswordSchema(BaseModel):
 
 # --- توابع کمکی (Helper Functions) ---
 
-
+Base.metadata.create_all(bind=engine)
 # فرض می‌کنیم این‌ها از فایل مدل‌ها و تنظیمات شما وارد می‌شوند
 # from database import get_db, User, UserSession, pwd_context, SECRET_KEY, ALGORITHM
 
