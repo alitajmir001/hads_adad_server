@@ -508,7 +508,7 @@ async def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
         return ServerResponse(
         success=False,
         message="خطا در ایجاد نشست",
-        
+        )
 
     return ServerResponse(
         success=True,
