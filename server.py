@@ -452,7 +452,7 @@ async def register(user_data: UserRegisterSchema, db: Session = Depends(get_db))
         db.rollback()
         raise HTTPException(status_code=500, detail="خطا در ثبت‌نام کاربر.")
 
-@app.post("/login", response_model=TokenResponse)
+@app.post("/login", response_model=ServerResponse)
 async def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
     """
     ورود کاربر و تولید توکن‌های دسترسی
@@ -463,7 +463,7 @@ async def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
     # ۲. بررسی وجود کاربر و صحت پسورد
     if not user or not pwd_context.verify(login_data.password, user.password):
         return ServerResponse(
-        success=false,
+        success=False,
         message="شماره تماس با کلمه عبور اشتباه است!",
         
     )
@@ -506,12 +506,12 @@ async def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         return ServerResponse(
-        success=false,
+        success=False,
         message="خطا در ایجاد نشست",
         )
 
     return ServerResponse(
-        success=true,
+        success=True,
         message="خوش آمدید!",
         data=TokenResponse(
             access_token=access_token,
