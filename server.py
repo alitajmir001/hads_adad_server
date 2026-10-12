@@ -139,7 +139,7 @@ class UserRegister_phone_Schema(BaseModel):
 class UserRegister_info_Schema(BaseModel):
     phone:str
     full_name:str
-    password=str
+    password:str
 class UserLoginSchema(BaseModel):
     phone: str
     password: str
