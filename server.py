@@ -432,9 +432,9 @@ async def register_by_info(user_data: UserRegister_info_Schema, db: Session = De
         )
     new_user = User(
         phone=user_data.phone,
-        password=hashed_password
-        full_name=user_data.full_name
-        wallet_balance=0# مقدار اولیه موجودی
+        password=hashed_password,
+        full_name=user_data.full_name,
+        wallet_balance=0,      # مقدار اولیه موجودی
     )
     try:
         db.add(new_user)
