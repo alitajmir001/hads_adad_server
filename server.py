@@ -463,7 +463,7 @@ async def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
     # ۲. بررسی وجود کاربر و صحت پسورد
     if not user or not pwd_context.verify(login_data.password, user.password):
         return ServerResponse(
-        success=False,
+        success=false,
         message="شماره تماس با کلمه عبور اشتباه است!",
         
     )
@@ -506,12 +506,12 @@ async def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         return ServerResponse(
-        success=False,
+        success=false,
         message="خطا در ایجاد نشست",
         )
 
     return ServerResponse(
-        success=True,
+        success=true,
         message="خوش آمدید!",
         data=TokenResponse(
             access_token=access_token,
