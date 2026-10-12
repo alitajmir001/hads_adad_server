@@ -505,12 +505,15 @@ async def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
         db.commit()
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail="خطا در ایجاد نشست کاربر.")
+        return ServerResponse(
+        success=False,
+        message="خطا در ایجاد نشست",
+        
 
     return ServerResponse(
         success=True,
         message="خوش آمدید!",
-        data=TokenData(
+        data=TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
             token_type="bearer"
