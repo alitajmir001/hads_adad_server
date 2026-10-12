@@ -17,6 +17,13 @@ import os
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi import Depends
+from typing import Generic, TypeVar, Optional
+from pydantic import BaseModel, Field
+
+
+
+# مثال استفاده:
+# return ServerResponse(success=True, message="Login successful", data=user_data)
 
 # 1. دریافت URL از محیط Render
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -59,7 +66,12 @@ def get_db():
 app = FastAPI()
 
 router = APIRouter()
+T = TypeVar("T")
 
+class ServerResponse(BaseModel, Generic[T]):
+    success: bool
+    message: Optional[str] = None
+    data: Optional[T] = None
 
 class Base(DeclarativeBase):
     pass
@@ -450,10 +462,12 @@ async def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
     
     # ۲. بررسی وجود کاربر و صحت پسورد
     if not user or not pwd_context.verify(login_data.password, user.password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="شماره موبایل یا رمز عبور اشتباه است."
-        )
+        return ServerResponse(
+        success=False,
+        message="شماره تماس با کلمه عبور اشتباه است!",
+        
+    )
+    }
 
     # ۳. تولید توکن‌ها
     # ایجاد Access Token
@@ -493,11 +507,15 @@ async def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail="خطا در ایجاد نشست کاربر.")
 
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer"
-    }
+    return ServerResponse(
+        success=True,
+        message="خوش آمدید!",
+        data=TokenData(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            token_type="bearer"
+        )
+    )
 
 @app.post("/logout")
 async def logout(current_user_id: int, db: Session = Depends(get_db)):
