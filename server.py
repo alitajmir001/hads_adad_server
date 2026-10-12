@@ -467,7 +467,7 @@ async def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
         message="شماره تماس با کلمه عبور اشتباه است!",
         
     )
-    }
+    
 
     # ۳. تولید توکن‌ها
     # ایجاد Access Token
