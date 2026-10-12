@@ -133,10 +133,13 @@ class TokenResponse(BaseModel): # فقط یک بار و به عنوان BaseMode
     refresh_token: str
     token_type: str
 
-class UserRegisterSchema(BaseModel):
+class UserRegister_phone_Schema(BaseModel):
     phone: str
-    name: Optional[str] = None
-
+    
+class UserRegister_info_Schema(BaseModel):
+    phone:str
+    full_name:str
+    password=str
 class UserLoginSchema(BaseModel):
     phone: str
     password: str
@@ -418,28 +421,50 @@ def generate_token_pair(user_id: int):
     return access_token, refresh_token
 
 # --- Implementation ---
+@app.post("/register_by_info", response_model=ServerResponse)
+async def register_by_info(user_data: UserRegister_info_Schema, db: Session = Depends(get_db)):
+    hashed_password = pwd_context.hash(user_data.password)
+    existing_user = db.query(User).filter(User.phone == user_data.phone).first()
+    if not existing_user:
+        return ServerResponse(
+            message="این شماره موبایل در سیستم ثبت نشده است.", 
+            success=False,
+        )
+    new_user = User(
+        phone=user_data.phone,
+        password=hashed_password
+        full_name=user_data.full_name
+        wallet_balance=0# مقدار اولیه موجودی
+    )
+    try:
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return ServerResponse(message= "ثبت‌ مشخصات با موفقیت انجام شد.",success=True,data=new_user)
+    except Exception as e:
+        db.rollback()
+        return ServerResponse(message= "خطا در ثبت مشخصات کاربر",success=False)
 
-@app.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(user_data: UserRegisterSchema, db: Session = Depends(get_db)):
+
+@app.post("/register_by_phone", response_model=ServerResponse)
+async def register_by_phone(user_data: UserRegister_phone_Schema, db: Session = Depends(get_db)):
     """
     ثبت‌نام کاربر جدید
     """
     # ۱. بررسی اینکه آیا کاربر قبلاً ثبت‌نام کرده یا خیر
     existing_user = db.query(User).filter(User.phone == user_data.phone).first()
     if existing_user:
-        raise HTTPException(
-            status_code=400, 
-            detail="این شماره موبایل قبلاً ثبت شده است."
+        return ServerResponse(
+            message="این شماره موبایل قبلاً ثبت شده است.", 
+            success=False,
         )
 
     # ۲. هش کردن رمز عبور
-    hashed_password = pwd_context.hash(user_data.password)
+    
 
     # ۳. ایجاد کاربر جدید
     new_user = User(
         phone=user_data.phone,
-        password=hashed_password,
-        name=user_data.name,
         wallet_balance=0 # مقدار اولیه موجودی
     )
     
@@ -447,10 +472,10 @@ async def register(user_data: UserRegisterSchema, db: Session = Depends(get_db))
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
-        return {"message": "ثبت‌نام با موفقیت انجام شد.", "user_id": new_user.id}
+        return ServerResponse(message= "ثبت‌نام با موفقیت انجام شد.",success=True,data=new_user)
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail="خطا در ثبت‌نام کاربر.")
+        return ServerResponse(message= "خطا در ثبت نام کاربر",success=False)
 
 @app.post("/login", response_model=ServerResponse)
 async def login(login_data: UserLoginSchema, db: Session = Depends(get_db)):
