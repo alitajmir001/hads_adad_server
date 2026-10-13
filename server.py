@@ -422,7 +422,7 @@ def generate_token_pair(user_id: int):
     return access_token, refresh_token
 
 # --- Implementation ---
-@app.post("/register_by_info", response_model=ServerResponse)
+@app.post("/register_by_info", response_model=ServerResponse[User])
 async def register_by_info(user_data: UserRegister_info_Schema, db: Session = Depends(get_db)):
     hashed_password = pwd_context.hash(user_data.password)
     existing_user = db.query(User).filter(User.phone == user_data.phone).first()
@@ -447,7 +447,7 @@ async def register_by_info(user_data: UserRegister_info_Schema, db: Session = De
         return ServerResponse(message= "خطا در ثبت مشخصات کاربر",success=False)
 
 
-@app.post("/register_by_phone", response_model=ServerResponse)
+@app.post("/register_by_phone", response_model=ServerResponse[User])
 async def register_by_phone(user_data: UserRegister_phone_Schema, db: Session = Depends(get_db)):
     """
     ثبت‌نام کاربر جدید
