@@ -72,6 +72,7 @@ class ServerResponse(BaseModel, Generic[T]):
     success: bool
     message: Optional[str] = None
     data: Optional[T] = None
+    model_config = ConfigDict(from_attributes=True)
 
 class Base(DeclarativeBase):
     pass
