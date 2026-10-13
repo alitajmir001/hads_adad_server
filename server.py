@@ -161,10 +161,16 @@ class ResetPasswordSchema(BaseModel):
     phone: str
     code: str
     new_password: str
+class UserResponseSchema(BaseModel):
+    id: int
+    phone: str
+    balance: float
+    full_name: Optional[str] = None
 
+    model_config = ConfigDict(from_attributes=True)
 # --- توابع کمکی (Helper Functions) ---
-Base.metadata.create_all(bind=engine)
-# Base.metadata.drop_all(bind=engine)
+# Base.metadata.create_all(bind=engine)
+Base.metadata.drop_all(bind=engine)
 # فرض می‌کنیم این‌ها از فایل مدل‌ها و تنظیمات شما وارد می‌شوند
 # from database import get_db, User, UserSession, pwd_context, SECRET_KEY, ALGORITHM
 
@@ -422,7 +428,7 @@ def generate_token_pair(user_id: int):
     return access_token, refresh_token
 
 # --- Implementation ---
-@app.post("/register_by_info", response_model=ServerResponse[User])
+@app.post("/register_by_info", response_model=ServerResponse[UserResponseSchema])
 async def register_by_info(user_data: UserRegister_info_Schema, db: Session = Depends(get_db)):
     hashed_password = pwd_context.hash(user_data.password)
     existing_user = db.query(User).filter(User.phone == user_data.phone).first()
@@ -447,7 +453,7 @@ async def register_by_info(user_data: UserRegister_info_Schema, db: Session = De
         return ServerResponse(message= "خطا در ثبت مشخصات کاربر",success=False)
 
 
-@app.post("/register_by_phone", response_model=ServerResponse[User])
+@app.post("/register_by_phone", response_model=ServerResponse[UserResponseSchema])
 async def register_by_phone(user_data: UserRegister_phone_Schema, db: Session = Depends(get_db)):
     """
     ثبت‌نام کاربر جدید
