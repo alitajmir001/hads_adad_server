@@ -434,7 +434,7 @@ async def register_by_info(user_data: UserRegister_info_Schema, db: Session = De
         phone=user_data.phone,
         password=hashed_password,
         full_name=user_data.full_name,
-        wallet_balance=0,      # مقدار اولیه موجودی
+        balance=0,      # مقدار اولیه موجودی
     )
     try:
         db.add(new_user)
@@ -465,7 +465,7 @@ async def register_by_phone(user_data: UserRegister_phone_Schema, db: Session = 
     # ۳. ایجاد کاربر جدید
     new_user = User(
         phone=user_data.phone,
-        wallet_balance=0 # مقدار اولیه موجودی
+        balance=0 # مقدار اولیه موجودی
     )
     
     try:
