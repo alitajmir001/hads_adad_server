@@ -448,16 +448,15 @@ async def register_by_info(user_data: UserRegister_info_Schema, db: Session = De
             message="این شماره موبایل در سیستم ثبت نشده است.", 
             success=False,
         )
-    new_user = User(
-        phone=user_data.phone,
-        password=hashed_password,
-        full_name=user_data.full_name,
-        balance=0,      # مقدار اولیه موجودی
-    )
+    
+    existing_user.password=hashed_password,
+    existing_user.full_name=user_data.full_name,
+    existing_user.balance=0,      # مقدار اولیه موجودی
+    
     try:
-        db.update(new_user)
+        
         db.commit()
-        db.refresh(new_user)
+        db.refresh(existing_user)
         return ServerResponse(message= "ثبت‌ مشخصات با موفقیت انجام شد.",success=True,data=new_user)
     except Exception as e:
         db.rollback()
