@@ -20,9 +20,10 @@ from fastapi import Depends
 from typing import Generic, TypeVar, Optional
 from pydantic import BaseModel, Field,ConfigDict
 from passlib.context import CryptContext
+import bcrypt
 
 # تعریف پسورد کانتکست (اگر از bcrypt استفاده می‌کنید)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 
@@ -437,8 +438,10 @@ def generate_token_pair(user_id: int):
 # --- Implementation ---
 @app.post("/register_by_info", response_model=ServerResponse[UserResponseSchema])
 async def register_by_info(user_data: UserRegister_info_Schema, db: Session = Depends(get_db)):
-    safe_password = user_data.password[:72]
-    hashed_password = pwd_context.hash(safe_password)
+    password_bytes = user_data.password.encode('utf-8')[:72]
+    salt = bcrypt.gensalt()
+    hashed_password = bcrypt.hashpw(password_bytes, salt).decode('utf-8')
+    
     existing_user = db.query(User).filter(User.phone == user_data.phone).first()
     if not existing_user:
         return ServerResponse(
