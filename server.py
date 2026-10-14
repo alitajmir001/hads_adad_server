@@ -457,7 +457,7 @@ async def register_by_info(user_data: UserRegister_info_Schema, db: Session = De
         
         db.commit()
         db.refresh(existing_user)
-        return ServerResponse(message= "ثبت‌ مشخصات با موفقیت انجام شد.",success=True,data=new_user)
+        return ServerResponse(message= "ثبت‌ مشخصات با موفقیت انجام شد.",success=True,data=existing_user)
     except Exception as e:
         db.rollback()
         return ServerResponse(message= "خطا در ثبت مشخصات کاربر",success=False)
