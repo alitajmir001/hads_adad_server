@@ -444,7 +444,7 @@ async def register_by_info(user_data: UserRegister_info_Schema, db: Session = De
         balance=0,      # مقدار اولیه موجودی
     )
     try:
-        db.add(new_user)
+        db.update(new_user)
         db.commit()
         db.refresh(new_user)
         return ServerResponse(message= "ثبت‌ مشخصات با موفقیت انجام شد.",success=True,data=new_user)
