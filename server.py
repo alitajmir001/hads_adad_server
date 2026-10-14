@@ -165,8 +165,9 @@ class UserResponseSchema(BaseModel):
     id: int
     phone: str
     balance: float
-    full_name: Optional[str] = None
     password: str
+    full_name: Optional[str] = None
+    
 
     model_config = ConfigDict(from_attributes=True)
 # --- توابع کمکی (Helper Functions) ---
