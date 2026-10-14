@@ -449,9 +449,9 @@ async def register_by_info(user_data: UserRegister_info_Schema, db: Session = De
             success=False,
         )
     
-    existing_user.password=hashed_password,
-    existing_user.full_name=user_data.full_name,
-    existing_user.balance=0,      # مقدار اولیه موجودی
+    existing_user.password=hashed_password
+    existing_user.full_name=user_data.full_name
+    existing_user.balance=0      # مقدار اولیه موجودی
     
     try:
         
