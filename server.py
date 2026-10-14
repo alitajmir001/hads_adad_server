@@ -19,6 +19,10 @@ from sqlalchemy.orm import sessionmaker, Session
 from fastapi import Depends
 from typing import Generic, TypeVar, Optional
 from pydantic import BaseModel, Field,ConfigDict
+from passlib.context import CryptContext
+
+# تعریف پسورد کانتکست (اگر از bcrypt استفاده می‌کنید)
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 
