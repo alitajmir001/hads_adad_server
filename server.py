@@ -171,7 +171,7 @@ class UserResponseSchema(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 # --- توابع کمکی (Helper Functions) ---
-# Base.metadata.drop_all(bind=engine)
+Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
 
 # فرض می‌کنیم این‌ها از فایل مدل‌ها و تنظیمات شما وارد می‌شوند
@@ -456,7 +456,7 @@ async def register_by_info(user_data: UserRegister_info_Schema, db: Session = De
         return ServerResponse(message= "خطا در ثبت مشخصات کاربر",success=False)
 
 
-@app.post("/register_by_phone", response_model=ServerResponse[UserResponseSchema])
+@app.post("/register_by_phone", response_model=ServerResponse[UserRegister_phone_Schema])
 async def register_by_phone(user_data: UserRegister_phone_Schema, db: Session = Depends(get_db)):
     """
     ثبت‌نام کاربر جدید
@@ -475,7 +475,7 @@ async def register_by_phone(user_data: UserRegister_phone_Schema, db: Session = 
     # ۳. ایجاد کاربر جدید
     new_user = User(
         phone=user_data.phone,
-        balance=0 # مقدار اولیه موجودی
+        
     )
     
     try:
