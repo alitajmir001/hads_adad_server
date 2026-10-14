@@ -166,10 +166,11 @@ class UserResponseSchema(BaseModel):
     phone: str
     balance: float
     full_name: Optional[str] = None
+    password: str
 
     model_config = ConfigDict(from_attributes=True)
 # --- توابع کمکی (Helper Functions) ---
-Base.metadata.drop_all(bind=engine)
+# Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
 
 # فرض می‌کنیم این‌ها از فایل مدل‌ها و تنظیمات شما وارد می‌شوند
