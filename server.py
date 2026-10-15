@@ -688,7 +688,7 @@ global_cycle_start_time = datetime.utcnow()
 
 
 
-@router.get("/api/main-menu/timer", response_model=TimerResponse)
+@app.get("/timer", response_model=TimerResponse)
 async def get_main_menu_timer():
     if remaining_seconds<=0:
         global_cycle_start_time = datetime.utcnow()
