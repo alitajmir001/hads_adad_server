@@ -687,7 +687,7 @@ current_remaining_seconds = ADMIN_TIMER_DURATION_SECONDS
 async def timer_countdown_task():
     global current_remaining_seconds
     while True:
-        await asyncio.sleep(1) # هر یک ثانیه صبر کن
+
         
         if current_remaining_seconds > 0:
             current_remaining_seconds -= 1
