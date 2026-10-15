@@ -21,7 +21,7 @@ from typing import Generic, TypeVar, Optional
 from pydantic import BaseModel, Field,ConfigDict
 from passlib.context import CryptContext
 import bcrypt
-
+import asyncio
 # تعریف پسورد کانتکست (اگر از bcrypt استفاده می‌کنید)
 # pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -680,30 +680,40 @@ async def join_room(room_id: str, user_id: int, db: Session = Depends(get_db)):
     db.commit()
     
     return {"message": "با موفقیت به روم پیوستید"}
-ADMIN_TIMER_DURATION_SECONDS = 120 
+# متغیرهای جهانی برای مدیریت تایمر
+ADMIN_TIMER_DURATION_SECONDS = 120
+current_remaining_seconds = ADMIN_TIMER_DURATION_SECONDS
 
-# فرض می‌کنیم مبدا زمان‌سنجی (epoch یا زمان شروع چرخه فعلی) ثبت شده است
-# در یک سیستم واقعی، این مقدار یا زمان شروع دور در DB ذخیره می‌شود یا یک رفرنس ثابت است.
-global_cycle_start_time = datetime.utcnow()
+# یک تابع که در پس‌زمینه همیشه در حال اجراست و زمان را کم می‌کند
+async def timer_countdown_task():
+    global current_remaining_seconds
+    while True:
+        await asyncio.sleep(1) # هر یک ثانیه صبر کن
+        
+        if current_remaining_seconds > 0:
+            current_remaining_seconds -= 1
+        else:
+            # وقتی به صفر رسید، دوباره از مقدار ادمین پر شود
+            current_remaining_seconds = ADMIN_TIMER_DURATION_SECONDS
 
-
+# این دستور باعث می‌شود وقتی سرور بالا می‌آید، حلقه تایمر هم شروع شود
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(timer_countdown_task())
 
 @app.get("/timer", response_model=TimerResponse)
-async def get_main_menu_timer():
-    now = datetime.utcnow()
-    
-    # محاسبه زمان سپری شده از شروع چرخه
-    elapsed_seconds = int((now - global_cycle_start_time).total_seconds())
-    
-    # محاسبه زمان باقی‌مانده با استفاده از باقیمانده تقسیم (برای لوپ شدن خودکار)
-    remaining_seconds = ADMIN_TIMER_DURATION_SECONDS - (elapsed_seconds % ADMIN_TIMER_DURATION_SECONDS)
-    
-    # خروجی استاندارد برای فست‌آپی
+async def get_timer():
     return {
-        "remaining_seconds": remaining_seconds,
-        "duration_seconds": ADMIN_TIMER_DURATION_SECONDS,
-        "server_time": now.isoformat()
+        "remaining_seconds": current_remaining_seconds,
+        "server_time": datetime.utcnow().isoformat()
     }
+
+# اگر ادمین خواست زمان را تغییر دهد، این تابع را صدا می‌زند
+@app.post("/set_timer/{seconds}")
+async def set_timer(seconds: int):
+    global current_remaining_seconds
+    current_remaining_seconds = seconds
+    return {"message": f"Timer set to {seconds} seconds"}
 
 @app.post("/game/submit-answer")
 async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = Depends(get_db)):
