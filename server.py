@@ -690,22 +690,19 @@ global_cycle_start_time = datetime.utcnow()
 
 @app.get("/timer", response_model=TimerResponse)
 async def get_main_menu_timer():
-    if remaining_seconds<=0:
-        global_cycle_start_time = datetime.utcnow()
     now = datetime.utcnow()
     
-    # محاسبه زمان سپری شده از شروع چرخه فعلی
+    # محاسبه زمان سپری شده از شروع چرخه
     elapsed_seconds = int((now - global_cycle_start_time).total_seconds())
     
-    # محاسبه زمان باقی‌مانده از چرخه فعلی با استفاده از باقی‌مانده تقسیم (Remainder)
-    # این باعث می‌شود وقتی تایمر به صفر رسید، خودکار به عدد ادمین برگردد و چرخه جدید شروع شود.
+    # محاسبه زمان باقی‌مانده با استفاده از باقیمانده تقسیم (برای لوپ شدن خودکار)
     remaining_seconds = ADMIN_TIMER_DURATION_SECONDS - (elapsed_seconds % ADMIN_TIMER_DURATION_SECONDS)
     
-        
-    return {TimerResponse(remaining_seconds= remaining_seconds,duration_seconds=ADMIN_TIMER_DURATION_SECONDS,server_time=elapsed_seconds)
-        
-        
-        
+    # خروجی استاندارد برای فست‌آپی
+    return {
+        "remaining_seconds": remaining_seconds,
+        "duration_seconds": ADMIN_TIMER_DURATION_SECONDS,
+        "server_time": now.isoformat()
     }
 
 @app.post("/game/submit-answer")
