@@ -72,7 +72,10 @@ app = FastAPI()
 
 router = APIRouter()
 T = TypeVar("T")
-
+class TimerResponse(BaseModel):
+    duration_seconds: int
+    remaining_seconds: int
+    server_time: str
 class ServerResponse(BaseModel, Generic[T]):
     success: bool
     message: Optional[str] = None
@@ -677,7 +680,33 @@ async def join_room(room_id: str, user_id: int, db: Session = Depends(get_db)):
     db.commit()
     
     return {"message": "با موفقیت به روم پیوستید"}
+ADMIN_TIMER_DURATION_SECONDS = 120 
 
+# فرض می‌کنیم مبدا زمان‌سنجی (epoch یا زمان شروع چرخه فعلی) ثبت شده است
+# در یک سیستم واقعی، این مقدار یا زمان شروع دور در DB ذخیره می‌شود یا یک رفرنس ثابت است.
+global_cycle_start_time = datetime.utcnow()
+
+
+
+@router.get("/api/main-menu/timer", response_model=TimerResponse)
+async def get_main_menu_timer():
+    if remaining_seconds<=0:
+        global_cycle_start_time = datetime.utcnow()
+    now = datetime.utcnow()
+    
+    # محاسبه زمان سپری شده از شروع چرخه فعلی
+    elapsed_seconds = int((now - global_cycle_start_time).total_seconds())
+    
+    # محاسبه زمان باقی‌مانده از چرخه فعلی با استفاده از باقی‌مانده تقسیم (Remainder)
+    # این باعث می‌شود وقتی تایمر به صفر رسید، خودکار به عدد ادمین برگردد و چرخه جدید شروع شود.
+    remaining_seconds = ADMIN_TIMER_DURATION_SECONDS - (elapsed_seconds % ADMIN_TIMER_DURATION_SECONDS)
+    
+        
+    return {TimerResponse(remaining_seconds= remaining_seconds,duration_seconds=ADMIN_TIMER_DURATION_SECONDS,server_time=elapsed_seconds)
+        
+        
+        
+    }
 
 @app.post("/game/submit-answer")
 async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = Depends(get_db)):
