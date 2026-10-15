@@ -691,19 +691,21 @@ async def timer_countdown_task():
     while True:
         now = time.time()
         sleep_duration = next_time - now
+        
         if sleep_duration > 0:
             await asyncio.sleep(sleep_duration)
         else:
-            next_time = now  # اگر به هر دلیلی عقب افتاد
+            # اگر به هر دلیلی زمان عقب افتاد، فاصله را اصلاح کن
+            next_time = now  
             
-        next_time += 1.0
+        next_time += 1.0  # رفتن به ثانیه بعدی
 
-        
         if current_remaining_seconds > 0:
             current_remaining_seconds -= 1
         else:
             # وقتی به صفر رسید، دوباره از مقدار ادمین پر شود
             current_remaining_seconds = ADMIN_TIMER_DURATION_SECONDS
+
 
 # این دستور باعث می‌شود وقتی سرور بالا می‌آید، حلقه تایمر هم شروع شود
 @app.on_event("startup")
