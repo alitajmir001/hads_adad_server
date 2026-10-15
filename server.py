@@ -791,9 +791,12 @@ async def finalize_game_and_payout(room_id: str, db: Session= Depends(get_db)):
 
     # توزیع مبالغ (۶۰٪، ۱۰٪، ۵٪)
     if winners_data:
+        await distribute_prizes(winners_data, room_id, db)
 if __name__ == "__main__":
-    # این بخش بسیار حیاتی است:
-    # اول سعی می‌کند پورت را از محیط Render بگیرد، اگر نبود از 10000 استفاده می‌کند
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
-        await distribute_prizes(winners_data, room_id, db)
+
+    
+    # این بخش بسیار حیاتی است:
+    # اول سعی می‌کند پورت را از محیط Render بگیرد، اگر نبود از 10000 استفاده می‌کند
+    
