@@ -686,8 +686,17 @@ current_remaining_seconds = ADMIN_TIMER_DURATION_SECONDS
 # یک تابع که در پس‌زمینه همیشه در حال اجراست و زمان را کم می‌کند
 async def timer_countdown_task():
     global current_remaining_seconds
+    next_time = time.time() + 1.0
+    
     while True:
-        await asyncio.sleep(1)
+        now = time.time()
+        sleep_duration = next_time - now
+        if sleep_duration > 0:
+            await asyncio.sleep(sleep_duration)
+        else:
+            sleep_duration = 1.0  # اگر به هر دلیلی عقب افتاد
+            
+        next_time += 1.0
 
         
         if current_remaining_seconds > 0:
