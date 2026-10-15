@@ -694,7 +694,7 @@ async def timer_countdown_task():
         if sleep_duration > 0:
             await asyncio.sleep(sleep_duration)
         else:
-            sleep_duration = 1.0  # اگر به هر دلیلی عقب افتاد
+            next_time = now  # اگر به هر دلیلی عقب افتاد
             
         next_time += 1.0
 
