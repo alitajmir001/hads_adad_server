@@ -22,6 +22,8 @@ from pydantic import BaseModel, Field,ConfigDict
 from passlib.context import CryptContext
 import bcrypt
 import asyncio
+
+
 # تعریف پسورد کانتکست (اگر از bcrypt استفاده می‌کنید)
 # pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -122,7 +124,8 @@ class RoomParticipant(Base):
     id = Column(Integer, primary_key=True, index=True)
     room_id = Column(Integer, ForeignKey("rooms.id"))
     user_id = Column(Integer, ForeignKey("users.id"))
-    current_progress = Column(Integer, default=0)   
+    current_progress = Column(Integer, default=0)  
+    Number_of_rounds_won=Column(Integer)  
     status = Column(String)   
     correct_answer = Column(Integer)
     room = relationship("Room")
@@ -134,7 +137,10 @@ class RoomParticipant(Base):
     
 
 # --- ۲. بخش اسکیماها (Pydantic Schemas) ---
-
+class RoomParticipantSchema(BaseModel):
+    user_id: int
+    room_id: int
+    status :str
 class TokenResponse(BaseModel): # فقط یک بار و به عنوان BaseModel
     access_token: str
     refresh_token: str
@@ -647,23 +653,17 @@ def setup_room_rounds( room_id: str, total_rounds: int,db: Session=Depends(get_d
 # --- API Endpoints ---
 
 # Dependency برای گرفتن session در مسیرها
-
-
-@app.post("/join")
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-
-@app.post("/join")
-async def join_room(user_id: int, room_id: Optional[int] = None, db: Session = Depends(get_db)):
+# room_id: Optional[int] = None
+@app.post("/join", response_model=ServerResponse)
+async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_db)):
     # بررسی وجود کاربر
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_data.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="کاربر یافت نشد")
 
     # اگر room_id فرستاده شده باشد، همان را پیدا کن
     if room_id is not None:
-        room = db.query(Room).filter(Room.id == room_id).first()
+        room = db.query(Room).filter(Room.id == user_data.room_id).first()
         
         
             
@@ -677,14 +677,14 @@ async def join_room(user_id: int, room_id: Optional[int] = None, db: Session = D
             db.commit()
             db.refresh(new_room)
              
-        room_id = room.id  # شناسه روم را برای استفاده‌های بعدی برداریم
+        user_data.room_id = room.id  # شناسه روم را برای استفاده‌های بعدی برداریم
 
     # بررسی موجودی برای ورود (مثلاً ۱۰ هزار تومان)
     if user.balance < 10000:
         return{"message":"شما مقدار پول کافی برای شرکت در مسابقه را ندارید"} 
     existing = db.query(RoomParticipant).filter(
-        RoomParticipant.room_id == room_id, 
-        RoomParticipant.user_id == user_id
+        RoomParticipant.room_id == user_data.room_id, 
+        RoomParticipant.user_id == user_data.user_id
     ).first()
     
     if existing:
@@ -694,7 +694,7 @@ async def join_room(user_id: int, room_id: Optional[int] = None, db: Session = D
         
         try:
             # اضافه کردن کاربر به روم
-            new_participant = RoomParticipant(room_id=room_id, user_id=user_id)
+            new_participant = RoomParticipant(room_id=user_data.room_id, user_id=user_data.user_id)
             db.add(new_participant)
             db.commit()
             return {"message": "با موفقیت به روم پیوستید"}
