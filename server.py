@@ -184,8 +184,8 @@ class UserResponseSchema(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 # --- توابع کمکی (Helper Functions) ---
-Base.metadata.drop_all(bind=engine)
-# Base.metadata.create_all(bind=engine)
+# Base.metadata.drop_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 # فرض می‌کنیم این‌ها از فایل مدل‌ها و تنظیمات شما وارد می‌شوند
 # from database import get_db, User, UserSession, pwd_context, SECRET_KEY, ALGORITHM
