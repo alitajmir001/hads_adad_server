@@ -114,7 +114,7 @@ class Room(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     # game_time = Column(DateTime, nullable=True)
     # game_start = Column(DateTime, nullable=True)
-    capacity=Column(Integer)
+    # capacity=Column(Integer)
    
     
     # روابط (Relationships)
@@ -189,7 +189,20 @@ Base.metadata.create_all(bind=engine)
 
 # فرض می‌کنیم این‌ها از فایل مدل‌ها و تنظیمات شما وارد می‌شوند
 # from database import get_db, User, UserSession, pwd_context, SECRET_KEY, ALGORITHM
+from sqlalchemy import text
 
+# این بخش را بعد از تعریف engine و قبل از شروع لود شدن روت‌ها قرار دهید:
+@app.on_event("startup")
+def startup_event():
+    try:
+        with engine.begin() as connection:
+            # اضافه کردن ستون capacity اگر وجود نداشته باشد
+            connection.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS capacity INTEGER;"))
+            # اضافه کردن ستون game_time اگر وجود نداشته باشد
+            connection.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS game_time TIMESTAMP;"))
+        print("-> Database migration check passed: columns verified/added.")
+    except Exception as e:
+        print(f"-> Error during automatic migration: {e}")
 
 
 
