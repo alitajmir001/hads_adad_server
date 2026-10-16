@@ -110,8 +110,9 @@ class Room(Base):
     total_rounds_required = Column(Integer, default=5)
     total_prize_pool = Column(Numeric(12, 2), default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
-    game_start_time = Column(DateTime, nullable=True)
-    start_time = Column(DateTime, nullable=True)
+    game_time = Column(DateTime, nullable=True)
+    capacity=Column(Integer)
+   
     
     # روابط (Relationships)
     participants = relationship("RoomParticipant", back_populates="room")
@@ -119,20 +120,18 @@ class Room(Base):
 class RoomParticipant(Base):
     __tablename__ = "room_participants"
     id = Column(Integer, primary_key=True, index=True)
-    room_id = Column(String, ForeignKey("rooms.id"))
+    room_id = Column(Integer, ForeignKey("rooms.id"))
     user_id = Column(Integer, ForeignKey("users.id"))
-    current_progress = Column(Integer, default=0) 
-    
+    current_progress = Column(Integer, default=0)   
+    status = Column(String)   
+    correct_answer = Column(Integer)
+    room = relationship("Room")
+    user = relationship("User")    
     room = relationship("Room", back_populates="participants")
     user = relationship("User")
 
-class RoomRound(Base):
-    __tablename__ = "room_rounds"
-    id = Column(Integer, primary_key=True, index=True)
-    room_id = Column(String, ForeignKey("rooms.id"))
-    round_number = Column(Integer)
-    correct_answer = Column(Integer)
-    room = relationship("Room")
+
+    
 
 # --- ۲. بخش اسکیماها (Pydantic Schemas) ---
 
@@ -652,7 +651,7 @@ def setup_room_rounds( room_id: str, total_rounds: int,db: Session=Depends(get_d
 
 @app.post("/rooms/join")
 async def join_room(room_id: str, user_id: int, db: Session = Depends(get_db)):
-    room = db.query(Room).filter(Room.id == room_id).first()
+    room = db.query(Room).last()
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="کاربر یافت نشد")
@@ -694,6 +693,17 @@ async def timer_countdown_task():
         else:
             # وقتی به صفر رسید، دوباره از مقدار ادمین پر شود
             current_remaining_seconds = ADMIN_TIMER_DURATION_SECONDS
+            new_room=Room(created_at=,total_rounds_required=5,capacity=0)
+            db.add(new_room)
+            db.commit()
+            db.refresh(new_room)
+   
+  
+    
+    
+    
+    
+    
 
 
 # این دستور باعث می‌شود وقتی سرور بالا می‌آید، حلقه تایمر هم شروع شود
