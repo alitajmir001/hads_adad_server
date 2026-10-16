@@ -200,6 +200,7 @@ def startup_event():
             connection.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS capacity INTEGER;"))
             # اضافه کردن ستون game_time اگر وجود نداشته باشد
             connection.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS game_time TIMESTAMP;"))
+            connection.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS game_start TIMESTAMP;"))
         print("-> Database migration check passed: columns verified/added.")
     except Exception as e:
         print(f"-> Error during automatic migration: {e}")
