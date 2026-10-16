@@ -107,7 +107,7 @@ class OTPCode(Base):
 
 class Room(Base):
     __tablename__ = "rooms"
-    id = Column(String, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True)
     status = Column(String, default="waiting") 
     total_rounds_required = Column(Integer, default=5)
     total_prize_pool = Column(Numeric(12, 2), default=0.0)
@@ -139,8 +139,8 @@ class RoomParticipant(Base):
 # --- ۲. بخش اسکیماها (Pydantic Schemas) ---
 class RoomParticipantSchema(BaseModel):
     user_id: int
-    room_id: int
-    status :str
+    room_id: Optional[int] = None  # یا str بسته به نوع id در جدول Room
+    status: Optional[str] = "active"
 class TokenResponse(BaseModel): # فقط یک بار و به عنوان BaseModel
     access_token: str
     refresh_token: str
