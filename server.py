@@ -659,7 +659,11 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
     # بررسی وجود کاربر
     user = db.query(User).filter(User.id == user_data.user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="کاربر یافت نشد")
+       
+        return{ ServerResponse(
+            message="کاربر یافت نشد", 
+            success=False,
+        )}
 
     # اگر room_id فرستاده شده باشد، همان را پیدا کن
     if room_id is not None:
@@ -681,14 +685,20 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
 
     # بررسی موجودی برای ورود (مثلاً ۱۰ هزار تومان)
     if user.balance < 10000:
-        return{"message":"شما مقدار پول کافی برای شرکت در مسابقه را ندارید"} 
+        return{ ServerResponse(
+            message="شما مقدار پول کافی برای شرکت در مسابقه را ندارید", 
+            success=False,
+        )}
     existing = db.query(RoomParticipant).filter(
         RoomParticipant.room_id == user_data.room_id, 
         RoomParticipant.user_id == user_data.user_id
     ).first()
     
     if existing:
-        return {"message": "شما قبلاً در این روم هستید", "success": True}
+        return{ ServerResponse(
+            message="شما قبلاً در این روم هستید", 
+            success=True,
+        )}
     else:
         
         
@@ -697,12 +707,15 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
             new_participant = RoomParticipant(room_id=user_data.room_id, user_id=user_data.user_id)
             db.add(new_participant)
             db.commit()
-            return {"message": "با موفقیت به روم پیوستید"}
+            return{ ServerResponse(
+            message=""با موفقیت به روم پیوستید"", 
+            success=True,
+            data=new_participant
+        )} 
         
         
-        except Exception as e:
-             db.rollback()
-             return {"message": "خطا در پیوستن به روم لطفا اینترنت خود را بررسی کنید"}
+        
+      
        
 
    
