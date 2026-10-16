@@ -88,7 +88,7 @@ class Base(DeclarativeBase):
 
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     phone = Column(String, unique=True, index=True)
     balance = Column(Numeric(12, 2), default=0.0)
     password = Column(String)
@@ -97,7 +97,7 @@ class User(Base):
 
 class OTPCode(Base):
     __tablename__ = "otp_codes"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     user_id=Column(Integer, ForeignKey("users.id"))
     code = Column(String)
     expires_at = Column(DateTime)
@@ -107,7 +107,7 @@ class OTPCode(Base):
 
 class Room(Base):
     __tablename__ = "rooms"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     status = Column(String, default="waiting") 
     total_rounds_required = Column(Integer, default=5)
     total_prize_pool = Column(Numeric(12, 2), default=0.0)
@@ -122,7 +122,7 @@ class Room(Base):
 
 class RoomParticipant(Base):
     __tablename__ = "room_participants"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     room_id = Column(Integer, ForeignKey("rooms.id"))
     user_id = Column(Integer, ForeignKey("users.id"))
     current_progress = Column(Integer, default=0)  
@@ -184,7 +184,7 @@ class UserResponseSchema(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 # --- توابع کمکی (Helper Functions) ---
-# Base.metadata.drop_all(bind=engine)
+Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
 
 # فرض می‌کنیم این‌ها از فایل مدل‌ها و تنظیمات شما وارد می‌شوند
