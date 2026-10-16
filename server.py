@@ -649,35 +649,65 @@ def setup_room_rounds( room_id: str, total_rounds: int,db: Session=Depends(get_d
 # Dependency برای گرفتن session در مسیرها
 
 
-@app.post("/rooms/join")
-async def join_room(room_id: str, user_id: int, db: Session = Depends(get_db)):
-    room = db.query(Room).last()
+@app.post("/join")
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+@app.post("/join")
+async def join_room(user_id: int, room_id: Optional[int] = None, db: Session = Depends(get_db)):
+    # بررسی وجود کاربر
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="کاربر یافت نشد")
 
-    if not room:
-        raise HTTPException(status_code=404, detail="روم یافت نشد")
-    
+    # اگر room_id فرستاده شده باشد، همان را پیدا کن
+    if room_id is not None:
+        room = db.query(Room).filter(Room.id == room_id).first()
+        
+        
+            
+    else:
+        # اگر room_id فرستاده نشده باشد (اولین بار یا ورود عمومی)، آخرین روم را بگیر
+        room = db.query(Room).order_by(Room.id.desc()).first()
+        if not room:
+            
+            new_room=Room(capacity=0)
+            db.add(new_room)
+            db.commit()
+            db.refresh(new_room)
+             
+        room_id = room.id  # شناسه روم را برای استفاده‌های بعدی برداریم
+
     # بررسی موجودی برای ورود (مثلاً ۱۰ هزار تومان)
     if user.balance < 10000:
-        raise HTTPException(status_code=400, detail="موجودی کافی نیست")
-
-    # اگر کاربر قبلاً در این روم بوده، دوباره اضافه نشود
+        return{"message":"شما مقدار پول کافی برای شرکت در مسابقه را ندارید"} 
     existing = db.query(RoomParticipant).filter(
         RoomParticipant.room_id == room_id, 
         RoomParticipant.user_id == user_id
     ).first()
     
     if existing:
-        return {"message": "شما قبلاً در این روم هستید"}
+        return {"message": "شما قبلاً در این روم هستید", "success": True}
+    else:
+        
+        
+        try:
+            # اضافه کردن کاربر به روم
+            new_participant = RoomParticipant(room_id=room_id, user_id=user_id)
+            db.add(new_participant)
+            db.commit()
+            return {"message": "با موفقیت به روم پیوستید"}
+        
+        
+        except Exception as e:
+             db.rollback()
+             return {"message": "خطا در پیوستن به روم لطفا اینترنت خود را بررسی کنید"}
+       
 
-    # اضافه کردن کاربر به روم
-    new_participant = RoomParticipant(room_id=room_id, user_id=user_id)
-    db.add(new_participant)
-    db.commit()
+   
+
     
-    return {"message": "با موفقیت به روم پیوستید"}
 # متغیرهای جهانی برای مدیریت تایمر
 ADMIN_TIMER_DURATION_SECONDS = 120
 current_remaining_seconds = ADMIN_TIMER_DURATION_SECONDS
@@ -693,7 +723,7 @@ async def timer_countdown_task():
         else:
             # وقتی به صفر رسید، دوباره از مقدار ادمین پر شود
             current_remaining_seconds = ADMIN_TIMER_DURATION_SECONDS
-            new_room=Room(created_at=,total_rounds_required=5,capacity=0)
+            new_room=Room(capacity=0)
             db.add(new_room)
             db.commit()
             db.refresh(new_room)
