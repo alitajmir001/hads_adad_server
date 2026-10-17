@@ -786,7 +786,7 @@ async def startup_event():
 
 @app.get("/timer", response_model=TimerResponse)
 async def get_timer(user_data:TimerResponse):
-    room = db.query(Rooms).filter(Rooms.id=room_id)
+    room = db.query(Rooms).filter(Rooms.id==room_id)
     room.game_time=current_remaining_seconds
     db.commit()
     return {
