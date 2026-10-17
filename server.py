@@ -112,8 +112,8 @@ class Room(Base):
     total_rounds_required = Column(Integer, default=5)
     total_prize_pool = Column(Numeric(12, 2), default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
-    game_time = Column(DateTime, nullable=True)
-    game_start = Column(DateTime, nullable=True)
+    game_time = Column(Integer)
+    game_start = Column(Integer)
     capacity=Column(Integer)
    
     
