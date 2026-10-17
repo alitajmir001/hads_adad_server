@@ -194,19 +194,19 @@ Base.metadata.create_all(bind=engine)
 from sqlalchemy import text
 
 # این بخش را بعد از تعریف engine و قبل از شروع لود شدن روت‌ها قرار دهید:
-@app.on_event("startup")
-def startup_event():
-    try:
-        with engine.begin() as connection:
-            # پاک کردن جدول‌های وابسته و اصلی برای ساخت تمیز از نو
-            connection.execute(text("DROP TABLE IF EXISTS room_participants CASCADE;"))
-            connection.execute(text("DROP TABLE IF EXISTS rooms CASCADE;"))
+# @app.on_event("startup")
+# def startup_event():
+#     try:
+#         with engine.begin() as connection:
+#             # پاک کردن جدول‌های وابسته و اصلی برای ساخت تمیز از نو
+#             connection.execute(text("DROP TABLE IF EXISTS room_participants CASCADE;"))
+#             connection.execute(text("DROP TABLE IF EXISTS rooms CASCADE;"))
             
-        # ساخت مجدد تمام جدول‌ها بر اساس مدل‌های پایتون (که id در آن‌ها Integer و autoincrement است)
-        Base.metadata.create_all(bind=engine)
-        print("-> Tables dropped and recreated cleanly with correct schema!")
-    except Exception as e:
-        print(f"-> Error during startup table reset: {e}")
+#         # ساخت مجدد تمام جدول‌ها بر اساس مدل‌های پایتون (که id در آن‌ها Integer و autoincrement است)
+#         Base.metadata.create_all(bind=engine)
+#         print("-> Tables dropped and recreated cleanly with correct schema!")
+#     except Exception as e:
+#         print(f"-> Error during startup table reset: {e}")
   
 
 
