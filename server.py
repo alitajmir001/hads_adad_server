@@ -784,7 +784,7 @@ async def timer_countdown_task():
 async def startup_event():
     asyncio.create_task(timer_countdown_task())
 
-@app.get("/timer", response_model=TimerResponse)
+@app.get("/timer/{timer_room}", response_model=TimerResponse)
 async def get_timer(timer_room: Optional[int] = None):
     room = db.query(Rooms).filter(Rooms.id==room_id)
     if room:
