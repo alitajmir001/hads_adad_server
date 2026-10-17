@@ -713,7 +713,12 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
         db.add(new_participant)
         db.commit()
         db.refresh(new_participant)
-        return ServerResponse(message="با موفقیت به روم پیوستید", success=True, data=new_participant)
+        participant_data = {
+            "id": new_participant.id,
+            "room_id": new_participant.room_id,
+            "user_id": new_participant.user_id
+        }
+        return ServerResponse(message="با موفقیت به روم پیوستید", success=True, data=participant_data)
         
     except Exception as e:
         db.rollback()
