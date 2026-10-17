@@ -692,6 +692,10 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
             db.commit()
             db.refresh(new_room)
             room = new_room
+        else:
+            room.game_time=current_remaining_seconds
+            db.commit()
+            
             
         user_data.room_id = room.id  # تنظیم شناسه روم برای استفاده‌های بعدی
 
@@ -761,16 +765,11 @@ async def timer_countdown_task():
 
         if current_remaining_seconds > 0:
             current_remaining_seconds -= 1
-            room = db.query(Room).order_by(Room.id.desc()).first()
-            room.game_time=current_remaining_seconds
-            db.commit()
+            
         else:
             # وقتی به صفر رسید، دوباره از مقدار ادمین پر شود
             current_remaining_seconds = ADMIN_TIMER_DURATION_SECONDS
-            new_room=Room(capacity=0,game_time=current_remaining_seconds)
-            db.add(new_room)
-            db.commit()
-            db.refresh(new_room)
+           
    
   
     
@@ -786,10 +785,14 @@ async def startup_event():
     asyncio.create_task(timer_countdown_task())
 
 @app.get("/timer", response_model=TimerResponse)
-async def get_timer():
+async def get_timer(user_data:TimerResponse):
+    room = db.query(Rooms).filter(Rooms.id=room_id)
+    room.game_time=current_remaining_seconds
+    db.commit()
     return {
         "remaining_seconds": current_remaining_seconds,
-        "server_time": datetime.utcnow().isoformat()
+        "server_time": datetime.utcnow().isoformat(),
+        "timer_room":room.game_time
     }
 
 # اگر ادمین خواست زمان را تغییر دهد، این تابع را صدا می‌زند
