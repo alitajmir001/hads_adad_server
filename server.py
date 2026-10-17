@@ -687,7 +687,7 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
         # اگر room_id نفرستاده بود، آخرین روم را بگیر
         room = db.query(Room).order_by(Room.id.desc()).first()
         if not room:
-            new_room = Room(capacity=0)
+            new_room = Room(capacity=0,game_time=current_remaining_seconds)
             db.add(new_room)
             db.commit()
             db.refresh(new_room)
@@ -761,10 +761,13 @@ async def timer_countdown_task():
 
         if current_remaining_seconds > 0:
             current_remaining_seconds -= 1
+            room = db.query(Room).order_by(Room.id.desc()).first()
+            room.game_time=current_remaining_seconds
+            db.commit()
         else:
             # وقتی به صفر رسید، دوباره از مقدار ادمین پر شود
             current_remaining_seconds = ADMIN_TIMER_DURATION_SECONDS
-            new_room=Room(capacity=0)
+            new_room=Room(capacity=0,game_time=current_remaining_seconds)
             db.add(new_room)
             db.commit()
             db.refresh(new_room)
