@@ -785,18 +785,23 @@ async def startup_event():
     asyncio.create_task(timer_countdown_task())
 
 @app.get("/timer/{timer_room}", response_model=TimerResponse)
-async def get_timer(timer_room: Optional[int] = None):
-    room = db.query(Rooms).filter(Rooms.id==room_id)
+async def get_timer(timer_room:Optional[int] = None, db: Session = Depends(get_db)):
+    # ۱. استفاده از .first() برای پیدا کردن واقعی رکورد در دیتابیس
+    room = db.query(Rooms).filter(Rooms.id == timer_room).first()
+    
+   
+    
     if room:
-        room.game_time=current_remaining_seconds
+        room.game_time = current_remaining_seconds
         db.commit()
         
-    
+        
     return {
         "remaining_seconds": current_remaining_seconds,
         "server_time": datetime.utcnow().isoformat(),
-        "timer_room":room.game_time
+        "timer_room": room.game_time
     }
+
 
 # اگر ادمین خواست زمان را تغییر دهد، این تابع را صدا می‌زند
 @app.post("/set_timer/{seconds}")
