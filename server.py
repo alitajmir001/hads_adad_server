@@ -785,6 +785,7 @@ async def startup_event():
     asyncio.create_task(timer_countdown_task())
 
 
+@app.get("/timer", response_model=TimerResponse)
 @app.get("/timer/{timer_room}", response_model=TimerResponse)
 async def get_timer(timer_room: Optional[int] = None, db: Session = Depends(get_db)):
     game_time_value = current_remaining_seconds
