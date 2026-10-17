@@ -733,7 +733,7 @@ async def Payment_by_the_customer(user_id:int, db: Session = Depends(get_db)):
     try:
         user.balance=10000
         db.commit()
-        db.refresh(new_participant)
+        
         return ServerResponse(message="با موفقیت پول به کیف پولتان واریز شد", success=True,data=user.balance)
         
     except Exception as e:
