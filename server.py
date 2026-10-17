@@ -723,7 +723,7 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
         
         
       
-@app.post("/payment_customer/{user_id}", response_model=ServerResponse)
+@app.get("/payment_customer/{user_id}", response_model=ServerResponse)
 async def Payment_by_the_customer(user_id:int, db: Session = Depends(get_db)):
     # بررسی وجود کاربر
     user = db.query(User).filter(User.id == user_id).first()
