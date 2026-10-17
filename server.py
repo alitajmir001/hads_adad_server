@@ -723,7 +723,22 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
         
         
       
-       
+@app.post("/payment_customer", response_model=ServerResponse)
+async def Payment_by_the_customer(user_id:int, db: Session = Depends(get_db)):
+    # بررسی وجود کاربر
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return ServerResponse(message="کاربر یافت نشد", success=False)    
+
+    try:
+        user.balance=10000
+        db.commit()
+        db.refresh(new_participant)
+        return ServerResponse(message="با موفقیت پول به کیف پولتان واریز شد", success=True,data=user.balance)
+        
+    except Exception as e:
+        db.rollback()
+        return ServerResponse(message="خطا", success=False)       
 
    
 
