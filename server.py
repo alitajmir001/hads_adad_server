@@ -77,6 +77,8 @@ T = TypeVar("T")
 class TimerResponse(BaseModel):
     remaining_seconds: int
     server_time: str
+    timer_room:int
+    room_id_timer:int
 class ServerResponse(BaseModel, Generic[T]):
     success: bool
     message: Optional[str] = None
@@ -801,7 +803,8 @@ async def get_timer(timer_room: Optional[int] = None, db: Session = Depends(get_
     return {
         "remaining_seconds": current_remaining_seconds,
         "server_time": datetime.utcnow().isoformat(),
-        "timer_room": game_time_value
+        "timer_room": game_time_value,
+        "room_id_timer":room.id
     }
 
 @app.post("/game/submit-answer")
