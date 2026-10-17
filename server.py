@@ -785,10 +785,13 @@ async def startup_event():
     asyncio.create_task(timer_countdown_task())
 
 @app.get("/timer", response_model=TimerResponse)
-async def get_timer(user_data:TimerResponse):
+async def get_timer(timer_room: Optional[int] = None):
     room = db.query(Rooms).filter(Rooms.id==room_id)
-    room.game_time=current_remaining_seconds
-    db.commit()
+    if room:
+        room.game_time=current_remaining_seconds
+        db.commit()
+        
+    
     return {
         "remaining_seconds": current_remaining_seconds,
         "server_time": datetime.utcnow().isoformat(),
