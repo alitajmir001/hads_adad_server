@@ -792,7 +792,7 @@ async def startup_event():
 async def get_timer(timer_room: Optional[int] = None, db: Session = Depends(get_db)):
     game_time_value = current_remaining_seconds
     room = None
-    global room_id
+    room_id=0
     
     if timer_room is not None and timer_room > 0:
         room = db.query(Rooms).filter(Rooms.id == timer_room).first()
