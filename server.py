@@ -760,7 +760,7 @@ current_remaining_seconds = ADMIN_TIMER_DURATION_SECONDS
 
 # یک تابع که در پس‌زمینه همیشه در حال اجراست و زمان را کم می‌کند
 async def timer_countdown_task():
-    db = SessionLocal()
+    
     global current_remaining_seconds
     while True:
         await asyncio.sleep(1)  # درست و استاندارد: یک ثانیه صبر کن
