@@ -802,25 +802,31 @@ async def startup_event():
 
 
 @app.get("/timer", response_model=TimerResponse)
-@app.get("/timer/{timer_room}", response_model=TimerResponse)
-async def get_timer(timer_room: Optional[int] = None, db: Session = Depends(get_db)):
+@app.get("/timer/{room_id}", response_model=TimerResponse)
+async def get_timer(room_id: Optional[int] = None, db: Session = Depends(get_db)):
     game_time_value = current_remaining_seconds
-    room = None
-    room_id=0
     
-    if timer_room is not None and timer_room > 0:
-        room = db.query(Rooms).filter(Rooms.id == timer_room).first()
+    
+    
+    if room_id is not None and room_id > 0:
+        room = db.query(Rooms).filter(Rooms.id == room_id).first()
         if room:
             room.game_time = current_remaining_seconds
             db.commit()
             game_time_value = room.game_time
-            room_id=room.id
+            
+            return {
+                "remaining_seconds": current_remaining_seconds,
+                "server_time": datetime.utcnow().isoformat(),
+                "timer_room": game_time_value,
+                "room_id":room.id
+    }
         
     return {
         "remaining_seconds": current_remaining_seconds,
         "server_time": datetime.utcnow().isoformat(),
         "timer_room": game_time_value,
-        "room_id_timer":room_id
+        
     }
 
 @app.post("/game/submit-answer")
