@@ -681,7 +681,7 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
         return ServerResponse(message="کاربر یافت نشد", success=False)
 
     # بررسی room_id
-    if user_data.room_id is not None:
+    if user_data.room_id is not None and user_data.room_id > 0:
         room = db.query(Room).filter(Room.id == user_data.room_id).first()
         if not room:
             return ServerResponse(message="روم مورد نظر یافت نشد", success=False)
@@ -689,17 +689,16 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
         # اگر room_id نفرستاده بود، آخرین روم را بگیر
         room = db.query(Room).order_by(Room.id.desc()).first()
         if not room:
-            new_room = Room(capacity=0,game_time=current_remaining_seconds)
+            new_room = Room(capacity=0, game_time=current_remaining_seconds)
             db.add(new_room)
             db.commit()
             db.refresh(new_room)
             room = new_room
         else:
-            room.game_time=current_remaining_seconds
+            room.game_time = current_remaining_seconds
             db.commit()
-            
-            
-        user_data.room_id = room.id  # تنظیم شناسه روم برای استفاده‌های بعدی
+
+        user_data.room_id = room.id
 
     # بررسی موجودی (۱۰ هزار تومان)
     if user.balance < 10000:
@@ -707,28 +706,40 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
 
     # بررسی عضویت قبلی
     existing = db.query(RoomParticipant).filter(
-        RoomParticipant.room_id == user_data.room_id, 
+        RoomParticipant.room_id == user_data.room_id,
         RoomParticipant.user_id == user_data.user_id
     ).first()
-    
+
     if existing:
-        return ServerResponse(message="شما قبلاً در این روم هستید", success=True, data=existing)
+        # تبدیل به دیکشنری ساده، نه شیء خام دیتابیس
+        existing_data = {
+            "id": existing.id,
+            "room_id": existing.room_id,
+            "user_id": existing.user_id
+        }
+        return ServerResponse(message="شما قبلاً در این روم هستید", success=True, data=existing_data)
 
     try:
         new_participant = RoomParticipant(room_id=user_data.room_id, user_id=user_data.user_id)
         db.add(new_participant)
+
+        # افزایش شمارنده ظرفیت روم
+        room.capacity = (room.capacity or 0) + 1
+
         db.commit()
         db.refresh(new_participant)
+
         participant_data = {
             "id": new_participant.id,
             "room_id": new_participant.room_id,
             "user_id": new_participant.user_id
         }
         return ServerResponse(message="با موفقیت به روم پیوستید", success=True, data=participant_data)
-        
-    except Exception as e:
+
+    except Exception:
         db.rollback()
         return ServerResponse(message="خطا در پیوستن به روم لطفا اینترنت خود را بررسی کنید", success=False)
+
 
         
         
