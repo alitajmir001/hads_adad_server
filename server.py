@@ -805,6 +805,7 @@ async def startup_event():
 @app.get("/timer/{room_id}", response_model=TimerResponse)
 async def get_timer(room_id: Optional[int] = None, db: Session = Depends(get_db)):
     game_time_value = current_remaining_seconds
+    room_id = room_id if room_id is not None else 0
     
     
     
@@ -814,18 +815,14 @@ async def get_timer(room_id: Optional[int] = None, db: Session = Depends(get_db)
             room.game_time = current_remaining_seconds
             db.commit()
             game_time_value = room.game_time
-            
-            return {
-                "remaining_seconds": current_remaining_seconds,
-                "server_time": datetime.utcnow().isoformat(),
-                "timer_room": game_time_value,
-                "room_id":room.id
-    }
+            room_id=room.id
+           
         
     return {
         "remaining_seconds": current_remaining_seconds,
         "server_time": datetime.utcnow().isoformat(),
         "timer_room": game_time_value,
+        "room_id":room_id
         
     }
 
