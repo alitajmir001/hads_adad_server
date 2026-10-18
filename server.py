@@ -679,6 +679,7 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
     user = db.query(User).filter(User.id == user_data.user_id).first()
     if not user:
         return ServerResponse(message="کاربر یافت نشد", success=False)
+    user_data.user_id=user.id
 
     # بررسی room_id
     if user_data.room_id is not None and user_data.room_id > 0:
@@ -694,9 +695,11 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
             db.commit()
             db.refresh(new_room)
             room = new_room
+            
         else:
             room.game_time = current_remaining_seconds
             db.commit()
+        
 
         user_data.room_id = room.id
 
