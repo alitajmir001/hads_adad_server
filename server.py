@@ -78,7 +78,7 @@ class TimerResponse(BaseModel):
     remaining_seconds: int
     server_time: str
     timer_room:int
-    room_id_timer:int
+    room_id:int
 class ServerResponse(BaseModel, Generic[T]):
     success: bool
     message: Optional[str] = None
