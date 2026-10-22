@@ -828,30 +828,33 @@ async def startup_event():
     asyncio.create_task(timer_countdown_task())
 
 
-@app.get("/timer", response_model=TimerResponse)
-@app.get("/timer/{room_id}", response_model=TimerResponse)
-async def get_timer(room_id: Optional[int] = None, db: Session = Depends(get_db)):
-    game_time_value = current_remaining_seconds
-    room_id = room_id if room_id is not None else 0
+@app.get("/timer", response_model=ServerResponse)
+# @app.get("/timer/{room_id}", response_model=TimerResponse)
+async def get_timer(db: Session = Depends(get_db)):
+    # game_time_value = current_remaining_seconds
+    # room_id = room_id if room_id is not None else 0
+   
+    room = db.query(Room).order_by(Room.id.desc()).first()
     
     
     
-    if room_id is not None and room_id > 0:
-        room = db.query(Rooms).filter(Rooms.id == room_id).first()
-        if room:
-            room.game_time = current_remaining_seconds
-            db.commit()
-            game_time_value = room.game_time
-            room_id=room.id
-           
-        
-    return {
-        "remaining_seconds": current_remaining_seconds,
+    if room:
+        return {
+            "success":True,
+            "data":"remaining_seconds": room.game_time,
         "server_time": datetime.utcnow().isoformat(),
-        "timer_room": game_time_value,
-        "room_id":room_id
+        "timer_room": room.game_start,
+        "room_id":room.id
+        
+        
         
     }
+        # room = db.query(Rooms).filter(Rooms.id == room_id).first()
+        
+           
+           
+        
+    
 
 @app.post("/game/submit-answer")
 async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = Depends(get_db)):
