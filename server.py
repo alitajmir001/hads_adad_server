@@ -802,7 +802,9 @@ async def master_timer_task():
                     else:
                         room = Room(capacity=0, game_time=0, game_start=ROOM_TIMER_DURATION)
                         db.add(room)
+                        
                     db.commit()
+                    db.refresh(room)
                     room_timer_active = True  # برو به فاز ۱۰ ثانیه
 
             else:
@@ -814,13 +816,14 @@ async def master_timer_task():
                 # وقتی ۱۰ ثانیه روم تمام شد
                 if room and room.game_start <= 0:
                     # ساخت روم جدید برای چرخه بعد
-                    new_room = Room(capacity=0, game_time=ADMIN_TIMER_DURATION_SECONDS, game_start=0)
-                    db.add(new_room)
+                    room = Room(capacity=0, game_time=ADMIN_TIMER_DURATION_SECONDS, game_start=0)
+                    db.add(room)
                     db.commit()
 
                     # ریست کردن برای چرخه جدید ۱۲۰ ثانیه‌ای
                     current_global_timer = ADMIN_TIMER_DURATION_SECONDS
                     room_timer_active = False
+                db.refresh(room)
 
         except Exception as e:
             db.rollback()
