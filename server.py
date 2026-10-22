@@ -75,8 +75,8 @@ app = FastAPI()
 router = APIRouter()
 T = TypeVar("T")
 class TimerResponse(BaseModel):
-    remaining_seconds: int
-    server_time: str
+   
+   
     timer_room:int
     room_id:int
 class ServerResponse(BaseModel, Generic[T]):
@@ -829,25 +829,25 @@ async def startup_event():
 
 
 @app.get("/timer", response_model=ServerResponse[TimerResponse])
-# @app.get("/timer/{room_id}", response_model=TimerResponse)
 async def get_timer(db: Session = Depends(get_db)):
-    # game_time_value = current_remaining_seconds
-    # room_id = room_id if room_id is not None else 0
-   
+    # پیدا کردن آخرین اتاق
     room = db.query(Room).order_by(Room.id.desc()).first()
     
-    
-    
     if room:
-        da= {
+        # دقت کنید که نام فیلدهای داخل این دیکشنری 
+        # باید دقیقاً با فیلدهای کلاس TimerResponse یکی باشد
+        da = {
             
-        "server_time": datetime.utcnow().isoformat(),
-        "timer_room": room.game_start,
-        "room_id":room.id   
-    }
-        return{"success":True,"data":da}
+            "timer_room": room.game_start,
+            "room_id": room.id   
+        }
+        return {"success": True, "data": da}
     
-        # room = db.query(Rooms).filter(Rooms.id == room_id).first()
+    # بسیار مهم: اگر اتاق پیدا نشد، نباید None برگردانیم
+    # باید یک پاسخ استاندارد طبق مدل ServerResponse برگردانیم
+    return {"success": False, "data": None} 
+    # نکته: اگر TimerResponse اجازه می‌دهد data=None باشد، کد بالا درست است.
+    # اگر TimerResponse اجباری است، باید یک شیء خالی از آن بسازید.
         
            
            
