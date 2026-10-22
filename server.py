@@ -75,6 +75,7 @@ app = FastAPI()
 router = APIRouter()
 T = TypeVar("T")
 class TimerResponse(BaseModel):
+    remaining_seconds:int
    
    
     timer_room:int
@@ -837,6 +838,7 @@ async def get_timer(db: Session = Depends(get_db)):
         # دقت کنید که نام فیلدهای داخل این دیکشنری 
         # باید دقیقاً با فیلدهای کلاس TimerResponse یکی باشد
         da = {
+            "remaining_seconds":room.game_time,
             
             "timer_room": room.game_start,
             "room_id": room.id   
