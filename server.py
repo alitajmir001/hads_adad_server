@@ -779,6 +779,7 @@ async def timer_countdown_task():
     db = SessionLocal()
     room = db.query(Room).order_by(Room.id.desc()).first()
     room.game_time=ADMIN_TIMER_DURATION_SECONDS
+    db.commit()
     global DURATION_START_TIME_ROOM
     
     
@@ -803,6 +804,9 @@ async def timer_countdown_task():
 async def timer_start_room():
     db = SessionLocal()
     room = db.query(Room).order_by(Room.id.desc()).first()
+    room.game_start=ADMIN_START_TIME_ROOM_DURATION
+
+    db.commit()
     global current_remaining_seconds
    
    
@@ -810,11 +814,15 @@ async def timer_start_room():
         await asyncio.sleep(1)
         if room.game_start>0:
             room.game_start-=1
+            
         else:
             new_room = Room(capacity=0, game_time=current_remaining_seconds)
             db.add(new_room)
             db.commit()
             db.refresh(new_room)
+        db.commit()  
+        db.refresh(room)    
+        
             
             
     
