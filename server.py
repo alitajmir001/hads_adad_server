@@ -768,62 +768,66 @@ async def Payment_by_the_customer(user_id:int, db: Session = Depends(get_db)):
 
    
 
-    
-# متغیرهای جهانی برای مدیریت تایمر
 ADMIN_TIMER_DURATION_SECONDS = 120
-current_remaining_seconds = ADMIN_TIMER_DURATION_SECONDS
-ADMIN_START_TIME_ROOM_DURATION=10
-DURATION_START_TIME_ROOM=ADMIN_START_TIME_ROOM_DURATION
-# یک تابع که در پس‌زمینه همیشه در حال اجراست و زمان را کم می‌کند
-async def timer_countdown_task():
-    db = SessionLocal()
-    
-    global DURATION_START_TIME_ROOM
-    
-    
-    while True:
-        await asyncio.sleep(1)  # درست و استاندارد: یک ثانیه صبر کن
+ROOM_TIMER_DURATION = 10
 
-        if current_remaining_seconds > 0:
-            room = db.query(Room).order_by(Room.id.desc()).first()
-            current_remaining_seconds-=1
-            room.game_time=current_remaining_seconds
-            db.commit()
-            
-        else:
-            # وقتی به صفر رسید، دوباره از مقدار ادمین پر شود
-            current_remaining_seconds=ADMIN_START_TIME_ROOM_DURATION
-            room.game_start = current_remaining_seconds
-            
-            
-            db.commit()
-            asyncio.create_task(timer_start_room())
-        
-           
-   
-  
-    
-async def timer_start_room():
-    db = SessionLocal()
-    room = db.query(Room).order_by(Room.id.desc()).first()
-    room.game_start=ADMIN_START_TIME_ROOM_DURATION
+current_global_timer = ADMIN_TIMER_DURATION_SECONDS
+room_timer_active = False  # برای تشخیص اینکه الان در فاز ۲ دقیقه هستیم یا ۱۰ ثانیه
 
-    db.commit()
-    global current_remaining_seconds
-   
-   
+
+async def master_timer_task():
+    global current_global_timer, room_timer_active
+
     while True:
         await asyncio.sleep(1)
-        if room.game_start>0:
-            room.game_start-=1
-            
-        else:
-            new_room = Room(capacity=0, game_time=current_remaining_seconds)
-            db.add(new_room)
-            db.commit()
-            db.refresh(new_room)
-        db.commit()  
-        db.refresh(room)    
+        
+        db = SessionLocal()
+        try:
+            room = db.query(Room).order_by(Room.id.desc()).first()
+
+            if not room_timer_active:
+                # فاز اول: شمارش معکوس ۱۲۰ ثانیه
+                if current_global_timer > 0:
+                    current_global_timer -= 1
+                
+                # ذخیره مقدار فعلی در game_time آخرین روم برای اینکه کلاینت ببیند
+                if room:
+                    room.game_time = current_global_timer
+                    db.commit()
+
+                # وقتی ۱۲۰ ثانیه تمام شد
+                if current_global_timer <= 0:
+                    if room:
+                        room.game_start = ROOM_TIMER_DURATION
+                    else:
+                        room = Room(capacity=0, game_time=0, game_start=ROOM_TIMER_DURATION)
+                        db.add(room)
+                    db.commit()
+                    room_timer_active = True  # برو به فاز ۱۰ ثانیه
+
+            else:
+                # فاز دوم: شمارش معکوس ۱۰ ثانیه روم
+                if room and room.game_start > 0:
+                    room.game_start -= 1
+                    db.commit()
+
+                # وقتی ۱۰ ثانیه روم تمام شد
+                if room and room.game_start <= 0:
+                    # ساخت روم جدید برای چرخه بعد
+                    new_room = Room(capacity=0, game_time=ADMIN_TIMER_DURATION_SECONDS, game_start=0)
+                    db.add(new_room)
+                    db.commit()
+
+                    # ریست کردن برای چرخه جدید ۱۲۰ ثانیه‌ای
+                    current_global_timer = ADMIN_TIMER_DURATION_SECONDS
+                    room_timer_active = False
+
+        except Exception as e:
+            db.rollback()
+            print(f"Timer Error: {e}")
+        finally:
+            db.close()
+
         
             
             
@@ -836,7 +840,7 @@ async def timer_start_room():
 # این دستور باعث می‌شود وقتی سرور بالا می‌آید، حلقه تایمر هم شروع شود
 @app.on_event("startup")
 async def startup_event():
-    asyncio.create_task(timer_countdown_task())
+    asyncio.create_task(master_timer_task())
 
 
 @app.get("/timer", response_model=ServerResponse[TimerResponse])
