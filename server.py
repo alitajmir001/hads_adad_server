@@ -771,24 +771,51 @@ async def Payment_by_the_customer(user_id:int, db: Session = Depends(get_db)):
 # متغیرهای جهانی برای مدیریت تایمر
 ADMIN_TIMER_DURATION_SECONDS = 120
 current_remaining_seconds = ADMIN_TIMER_DURATION_SECONDS
-
+ADMIN_START_TIME_ROOM_DURATION=10
+DURATION_START_TIME_ROOM=ADMIN_START_TIME_ROOM_DURATION
 # یک تابع که در پس‌زمینه همیشه در حال اجراست و زمان را کم می‌کند
 async def timer_countdown_task():
+    db = SessionLocal()
+    room = db.query(Room).order_by(Room.id.desc()).first()
+    room.game_time=ADMIN_TIMER_DURATION_SECONDS
+    global DURATION_START_TIME_ROOM
     
-    global current_remaining_seconds
+    
     while True:
         await asyncio.sleep(1)  # درست و استاندارد: یک ثانیه صبر کن
 
-        if current_remaining_seconds > 0:
-            current_remaining_seconds -= 1
+        if room.game_time > 0:
+            room.game_time-=1
+            db.commit()
             
         else:
             # وقتی به صفر رسید، دوباره از مقدار ادمین پر شود
-            current_remaining_seconds = ADMIN_TIMER_DURATION_SECONDS
+            room.game_start = ADMIN_START_TIME_ROOM_DURATION
+            
+            db.commit()
+            asyncio.create_task(timer_start_room())
+        
            
    
   
     
+async def timer_start_room():
+    db = SessionLocal()
+    room = db.query(Room).order_by(Room.id.desc()).first()
+    global current_remaining_seconds
+   
+   
+    while True:
+        await asyncio.sleep(1)
+        if room.game_start>0:
+            room.game_start-=1
+        else:
+            new_room = Room(capacity=0, game_time=current_remaining_seconds)
+            db.add(new_room)
+            db.commit()
+            db.refresh(new_room)
+            
+            
     
     
     
