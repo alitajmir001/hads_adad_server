@@ -828,7 +828,7 @@ async def startup_event():
     asyncio.create_task(timer_countdown_task())
 
 
-@app.get("/timer", response_model=ServerResponse)
+@app.get("/timer", response_model=ServerResponse[TimerResponse])
 # @app.get("/timer/{room_id}", response_model=TimerResponse)
 async def get_timer(db: Session = Depends(get_db)):
     # game_time_value = current_remaining_seconds
@@ -839,16 +839,14 @@ async def get_timer(db: Session = Depends(get_db)):
     
     
     if room:
-        return {
-            "success":True,
-            "data":"remaining_seconds": room.game_time,
+        da= {
+            
         "server_time": datetime.utcnow().isoformat(),
         "timer_room": room.game_start,
-        "room_id":room.id
-        
-        
-        
+        "room_id":room.id   
     }
+        return(success=True,data=da)
+    
         # room = db.query(Rooms).filter(Rooms.id == room_id).first()
         
            
