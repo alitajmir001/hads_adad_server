@@ -691,14 +691,14 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
         # اگر room_id نفرستاده بود، آخرین روم را بگیر
         room = db.query(Room).order_by(Room.id.desc()).first()
         if not room:
-            new_room = Room(capacity=0, game_time=current_remaining_seconds)
+            new_room = Room(capacity=0, game_time=current_global_timer)
             db.add(new_room)
             db.commit()
             db.refresh(new_room)
             room = new_room
             
         else:
-            room.game_time = current_remaining_seconds
+            room.game_time = current_global_timer
             db.commit()
         
 
