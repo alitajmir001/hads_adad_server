@@ -777,22 +777,24 @@ DURATION_START_TIME_ROOM=ADMIN_START_TIME_ROOM_DURATION
 # یک تابع که در پس‌زمینه همیشه در حال اجراست و زمان را کم می‌کند
 async def timer_countdown_task():
     db = SessionLocal()
-    room = db.query(Room).order_by(Room.id.desc()).first()
-    room.game_time=ADMIN_TIMER_DURATION_SECONDS
-    db.commit()
+    
     global DURATION_START_TIME_ROOM
     
     
     while True:
         await asyncio.sleep(1)  # درست و استاندارد: یک ثانیه صبر کن
 
-        if room.game_time > 0:
-            room.game_time-=1
+        if current_remaining_seconds > 0:
+            room = db.query(Room).order_by(Room.id.desc()).first()
+            current_remaining_seconds-=1
+            room.game_time=current_remaining_seconds
             db.commit()
             
         else:
             # وقتی به صفر رسید، دوباره از مقدار ادمین پر شود
-            room.game_start = ADMIN_START_TIME_ROOM_DURATION
+            current_remaining_seconds=ADMIN_START_TIME_ROOM_DURATION
+            room.game_start = current_remaining_seconds
+            
             
             db.commit()
             asyncio.create_task(timer_start_room())
