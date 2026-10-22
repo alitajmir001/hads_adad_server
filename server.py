@@ -845,7 +845,7 @@ async def get_timer(db: Session = Depends(get_db)):
         "timer_room": room.game_start,
         "room_id":room.id   
     }
-        return{success=True,data=da}
+        return{"success":True,"data":da}
     
         # room = db.query(Rooms).filter(Rooms.id == room_id).first()
         
