@@ -775,51 +775,65 @@ timer_game=ADMIN_TIMER_GAME
 ADMIN_TIMER_ROOM=10
 timer_room=ADMIN_TIMER_ROOM
 FAZ_10=False
+
 async def master_timer_task():
     global FAZ_10
     while True:
         await asyncio.sleep(1)
+        
         db = SessionLocal()
         try:
+            # پیدا کردن آخرین اتاق
             room = db.query(Room).order_by(Room.id.desc()).first()
+
             if not room:
-                new_room = Room(capacity=0, game_time=120)
-                db.add(new_room)
+                room = Room(capacity=0, game_time=120, game_start=0)
+                db.add(room)
                 db.commit()
-                db.refresh(new_room)
-               
+                db.refresh(room)
                 continue
 
-            # فاز ۱: شمارش معکوس بازی
-            if not FAZ_10:
-                if room.game_time > 0:  # اصلاح شد: وقتی به 0 رسید، این شرط غلط می‌شود
+            # فاز ۱: شمارش معکوس ۱۲۰ ثانیه (game_time)
+            if FAZ_10==False:
+                if room.game_time > -1:
                     room.game_time -= 1
                     db.commit()
-                else:
-                    # وقتی به 0 رسید، بلافاصله وارد فاز بعدی شو
-                    room.game_start = 10
-                    room.game_time = -1 # برای اینکه بفهمیم بازی تمام شده
-                    db.commit()
-                    FAZ_10 = True
+                
             
-            # فاز ۲: شمارش معکوس ۱۰ ثانیه
-            else:
-                if room.game_start > 0:
+            # فاز ۲: وقتی ۱۲۰ ثانیه تمام شد، اگر تایمر ۱۰ ثانیه‌ای هنوز مقداردهی نشده، آن را ۱۰ کن
+                elif room.game_time <= -1:
+                    room.game_start = 10
+                    db.commit()
+                    FAZ_10=True
+                    continue
+                
+            
+            elif FAZ_10==True:
+                
+                
+                if room.game_start > -1:
                     room.game_start -= 1
                     db.commit()
+        
+                
+
+            # فاز ۴: وقتی ۱۰ ثانیه هم تمام شد، روم جدید ساخته شود
                 else:
-                    # تمام شدن هر دو تایمر و ساخت روم جدید
-                    new_room = Room(capacity=0, game_time=120)
-                    db.add(new_room)
-                    db.commit()
-                    db.refresh(new_room)
-                    FAZ_10 = False # بازگشت به فاز اول
+                     new_room = Room(capacity=0, game_time=120, game_start=0)
+                     db.add(new_room)                  
+                     db.commit()
+                     FAZ_10=False
+               
+            db.refresh(room)
                     
+    
+           
+
         except Exception as e:
             db.rollback()
             print(f"Timer Error: {e}")
         finally:
-            db.close()
+            db.close()   
 
 
 
