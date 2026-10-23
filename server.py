@@ -852,11 +852,11 @@ async def get_timer(db: Session = Depends(get_db)):
             "timer_room": room.game_start,
             "room_id": room.id   
         }
-        return {"success": True, "data": da}
+    return {"success": True, "data": da}
     
     # بسیار مهم: اگر اتاق پیدا نشد، نباید None برگردانیم
     # باید یک پاسخ استاندارد طبق مدل ServerResponse برگردانیم
-    return {"success": False, "data": None} 
+    
     # نکته: اگر TimerResponse اجازه می‌دهد data=None باشد، کد بالا درست است.
     # اگر TimerResponse اجباری است، باید یک شیء خالی از آن بسازید.
         
