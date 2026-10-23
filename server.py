@@ -786,14 +786,19 @@ async def master_timer_task():
             room = db.query(Room).order_by(Room.id.desc()).first()
 
             if not room_timer_active:
-                # فاز اول: شمارش معکوس ۱۲۰ ثانیه
-                if current_global_timer > 0:
-                    current_global_timer -= 1
-                
                 # ذخیره مقدار فعلی در game_time آخرین روم برای اینکه کلاینت ببیند
                 if room:
                     room.game_time = current_global_timer
                     db.commit()
+                else:
+                     room = Room(capacity=0, game_time=current_global_timer)
+                     db.add(room)
+                # فاز اول: شمارش معکوس ۱۲۰ ثانیه
+                if current_global_timer > 0:
+                    current_global_timer -= 1
+                
+                
+                    
 
                 # وقتی ۱۲۰ ثانیه تمام شد
                 if current_global_timer <= 0:
