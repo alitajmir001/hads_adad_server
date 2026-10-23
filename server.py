@@ -75,11 +75,11 @@ app = FastAPI()
 router = APIRouter()
 T = TypeVar("T")
 class TimerResponse(BaseModel):
-    remaining_seconds:int
+    remaining_seconds:Optional[int] = None
    
    
-    timer_room:int
-    room_id:int
+    timer_room:Optional[int] = None
+    room_id:Optional[int] = None
 class ServerResponse(BaseModel, Generic[T]):
     success: bool
     message: Optional[str] = None
