@@ -822,7 +822,7 @@ async def master_timer_task():
                      db.commit()
                      FAZ_10=False
                
-        
+            db.refresh(room)
                     
     
            
