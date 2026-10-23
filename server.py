@@ -794,13 +794,13 @@ async def master_timer_task():
 
             # فاز ۱: شمارش معکوس ۱۲۰ ثانیه (game_time)
             if FAZ_10==False:
-                if room.game_time > 0:
+                if room.game_time > -1:
                     room.game_time -= 1
                     db.commit()
                 
             
             # فاز ۲: وقتی ۱۲۰ ثانیه تمام شد، اگر تایمر ۱۰ ثانیه‌ای هنوز مقداردهی نشده، آن را ۱۰ کن
-                elif room.game_time <= 0:
+                elif room.game_time <= -1:
                     room.game_start = 10
                     db.commit()
                     FAZ_10=True
@@ -810,7 +810,7 @@ async def master_timer_task():
             elif FAZ_10==True:
                 
                 
-                if room.game_start > 0:
+                if room.game_start > -1:
                     room.game_start -= 1
                     db.commit()
         
