@@ -804,6 +804,7 @@ async def master_timer_task():
                     room.game_start = 10
                     db.commit()
                     FAZ_10=True
+                    continue
                 
             
             elif FAZ_10==True:
