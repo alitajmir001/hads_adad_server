@@ -774,7 +774,9 @@ ADMIN_TIMER_GAME=120
 timer_game=ADMIN_TIMER_GAME
 ADMIN_TIMER_ROOM=10
 timer_room=ADMIN_TIMER_ROOM
+FAZ_10=False
 async def master_timer_task():
+    global FAZ_10
     while True:
         await asyncio.sleep(1)
         
@@ -791,25 +793,36 @@ async def master_timer_task():
                 continue
 
             # فاز ۱: شمارش معکوس ۱۲۰ ثانیه (game_time)
-            if room.game_time > 0:
-                room.game_time -= 1
-                db.commit()
+            if FAZ_10==False:
+                if room.game_time > 0:
+                    room.game_time -= 1
+                    db.commit()
+                
             
             # فاز ۲: وقتی ۱۲۰ ثانیه تمام شد، اگر تایمر ۱۰ ثانیه‌ای هنوز مقداردهی نشده، آن را ۱۰ کن
-            elif room.game_start == 0:
-                room.game_start = 10
-                db.commit()
-
-            # فاز ۳: اگر تایمر ۱۰ ثانیه‌ای در حال کم شدن است
-            elif room.game_start > 1:
-                room.game_start -= 1
-                db.commit()
+                elif room.game_time <= 0:
+                    room.game_start = 10
+                    db.commit()
+                    FAZ_10=True
+                
+            
+            elif FAZ_10==True:
+                elif room.game_start > 0:
+                    room.game_start -= 1
+                    db.commit()
+        
+                
 
             # فاز ۴: وقتی ۱۰ ثانیه هم تمام شد، روم جدید ساخته شود
-            else:
-                new_room = Room(capacity=0, game_time=120, game_start=0)
-                db.add(new_room)
-                db.commit()
+                else:
+                     new_room = Room(capacity=0, game_time=120, game_start=0)
+                     db.add(new_room)                  
+                     db.commit()
+               
+        
+                    
+    
+           
 
         except Exception as e:
             db.rollback()
