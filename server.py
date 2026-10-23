@@ -786,6 +786,7 @@ async def master_timer_task():
                 new_room = Room(capacity=0, game_time=120)
                 db.add(new_room)
                 db.commit()
+                db.refresh(new_room)
                
                 continue
 
@@ -811,6 +812,7 @@ async def master_timer_task():
                     new_room = Room(capacity=0, game_time=120)
                     db.add(new_room)
                     db.commit()
+                    db.refresh(new_room)
                     FAZ_10 = False # بازگشت به فاز اول
                     
         except Exception as e:
