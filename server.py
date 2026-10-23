@@ -691,18 +691,18 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
         # اگر room_id نفرستاده بود، آخرین روم را بگیر
         room = db.query(Room).order_by(Room.id.desc()).first()
         if not room:
-            new_room = Room(capacity=0, game_time=current_global_timer)
+            new_room = Room(capacity=0, game_time=120)
             db.add(new_room)
             db.commit()
             db.refresh(new_room)
             room = new_room
             
-        else:
-            room.game_time = current_global_timer
-            db.commit()
+        # else:
+        #     room.game_time = current_global_timer
+        #     db.commit()
         
 
-        user_data.room_id = room.id
+    user_data.room_id = room.id
 
     # بررسی موجودی (۱۰ هزار تومان)
     if user.balance < 10000:
