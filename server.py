@@ -783,36 +783,36 @@ async def master_timer_task():
         try:
             room = db.query(Room).order_by(Room.id.desc()).first()
             if not room:
-                room = Room(capacity=0, game_time=120, game_start=0)
-                db.add(room)
+                new_room = Room(capacity=0, game_time=120)
+                db.add(new_room)
                 db.commit()
-                db.refresh(room)
+               
                 continue
 
-            # فاز ۱: شمارش معکوس ۱۲۰ ثانیه
+            # فاز ۱: شمارش معکوس بازی
             if not FAZ_10:
-                if room.game_time > 0: # اصلاح شد: تا زمانی که بزرگتر از 0 است کم کن
+                if room.game_time > 0:  # اصلاح شد: وقتی به 0 رسید، این شرط غلط می‌شود
                     room.game_time -= 1
                     db.commit()
-                elif room.game_time <= 0: # وقتی به 0 رسید
+                else:
+                    # وقتی به 0 رسید، بلافاصله وارد فاز بعدی شو
                     room.game_start = 10
-                   
+                    room.game_time = -1 # برای اینکه بفهمیم بازی تمام شده
                     db.commit()
                     FAZ_10 = True
             
-            # فاز ۲: وقتی FAZ_10 فعال است (تایمر ۱۰ ثانیه‌ای)
+            # فاز ۲: شمارش معکوس ۱۰ ثانیه
             else:
-                if room.game_start > 0: # اصلاح شد: تا زمانی که تایمر روم مثبت است
+                if room.game_start > 0:
                     room.game_start -= 1
                     db.commit()
                 else:
-                    # فاز ۳: وقتی ۱۰ ثانیه هم تمام شد
-                    new_room = Room(capacity=0, game_time=120, game_start=0)
-                    db.add(new_room)                  
+                    # تمام شدن هر دو تایمر و ساخت روم جدید
+                    new_room = Room(capacity=0, game_time=120)
+                    db.add(new_room)
                     db.commit()
-                    FAZ_10 = False # بازگشت به فاز اول برای روم جدید
-
-            db.refresh(room)
+                    FAZ_10 = False # بازگشت به فاز اول
+                    
         except Exception as e:
             db.rollback()
             print(f"Timer Error: {e}")
