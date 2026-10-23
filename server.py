@@ -820,7 +820,7 @@ async def master_timer_task():
                      new_room = Room(capacity=0, game_time=120, game_start=0)
                      db.add(new_room)                  
                      db.commit()
-                     FAZ_10==False
+                     FAZ_10=False
                
         
                     
