@@ -770,8 +770,12 @@ async def Payment_by_the_customer(user_id:int, db: Session = Depends(get_db)):
 
 import asyncio
 from datetime import datetime
-
+ADMIN_TIMER_GAME=120
+timer_game=ADMIN_TIMER_GAME
+ADMIN_TIMER_ROOM=10
+timer_room=ADMIN_TIMER_ROOM
 async def master_timer_task():
+    global timer_room,timer_game
     while True:
         await asyncio.sleep(1)
         
@@ -789,18 +793,22 @@ async def master_timer_task():
                
 
             # فاز ۱: اگر تایمر اصلی (game_time) هنوز تمام نشده است
-            if room.game_time > 0:
-                room.game_time -= 1
+            if timer_game > 0:
+                timer_game-=1
+                room.game_time = timer_game
                 db.commit()
             
             # فاز ۲: وقتی ۱۲۰ ثانیه تمام شد، ۱۰ ثانیه را استارت بزن
-            elif room.game_time >= 0:
-                room.game_start = 10
+            elif timer_game <= 0:
+                timer_room=10
+                
+                room.game_start = timer_room
                 db.commit()
 
             # فاز ۳: شمارش معکوس ۱۰ ثانیه
-            if room.game_start > 0:
-                room.game_start -= 1
+            if timer_room > 0:
+                timer_room-=1
+                room.game_start = timer_room
                 db.commit()
 
             # فاز ۴: وقتی ۱۰ ثانیه هم تمام شد، اتاق جدید برای دور بعدی ساخته شود
