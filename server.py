@@ -768,67 +768,46 @@ async def Payment_by_the_customer(user_id:int, db: Session = Depends(get_db)):
 
    
 
-ADMIN_TIMER_DURATION_SECONDS = 120
-ROOM_TIMER_DURATION = 10
-
-current_global_timer = ADMIN_TIMER_DURATION_SECONDS
-room_timer_active = False  # برای تشخیص اینکه الان در فاز ۲ دقیقه هستیم یا ۱۰ ثانیه
-
+import asyncio
+from datetime import datetime
 
 async def master_timer_task():
-    global current_global_timer, room_timer_active
-
     while True:
         await asyncio.sleep(1)
         
         db = SessionLocal()
         try:
+            # پیدا کردن آخرین اتاق
             room = db.query(Room).order_by(Room.id.desc()).first()
 
-            if not room_timer_active:
-                # ذخیره مقدار فعلی در game_time آخرین روم برای اینکه کلاینت ببیند
-                if room:
-                    room.game_time = current_global_timer
-                    db.commit()
-                else:
-                     room = Room(capacity=0, game_time=current_global_timer)
-                     db.add(room)
-                # فاز اول: شمارش معکوس ۱۲۰ ثانیه
-                if current_global_timer > 0:
-                    current_global_timer -= 1
-                
-                
-                    
-
-                # وقتی ۱۲۰ ثانیه تمام شد
-                if current_global_timer <= 0:
-                    if room:
-                        room.game_start = ROOM_TIMER_DURATION
-                    else:
-                        room = Room(capacity=0, game_time=0, game_start=ROOM_TIMER_DURATION)
-                        db.add(room)
-                        
-                    db.commit()
-                    db.refresh(room)
-                    room_timer_active = True  # برو به فاز ۱۰ ثانیه
-
-            else:
-                # فاز دوم: شمارش معکوس ۱۰ ثانیه روم
-                if room and room.game_start > 0:
-                    room.game_start -= 1
-                    db.commit()
-
-                # وقتی ۱۰ ثانیه روم تمام شد
-                if room and room.game_start <= 0:
-                    # ساخت روم جدید برای چرخه بعد
-                    room = Room(capacity=0, game_time=ADMIN_TIMER_DURATION_SECONDS, game_start=0)
-                    db.add(room)
-                    db.commit()
-
-                    # ریست کردن برای چرخه جدید ۱۲۰ ثانیه‌ای
-                    current_global_timer = ADMIN_TIMER_DURATION_SECONDS
-                    room_timer_active = False
+            if not room:
+                # اگر هیچ اتاقی نبود، اولین اتاق را بساز
+                room = Room(capacity=0, game_time=120, game_start=0)
+                db.add(room)
+                db.commit()
                 db.refresh(room)
+                continue
+
+            # فاز ۱: اگر تایمر اصلی (game_time) هنوز تمام نشده است
+            if room.game_time > 0:
+                room.game_time -= 1
+                db.commit()
+            
+            # فاز ۲: وقتی ۱۲۰ ثانیه تمام شد، ۱۰ ثانیه را استارت بزن
+            elif room.game_time >= 0:
+                room.game_start = 10
+                db.commit()
+
+            # فاز ۳: شمارش معکوس ۱۰ ثانیه
+            if room.game_start > 0:
+                room.game_start -= 1
+                db.commit()
+
+            # فاز ۴: وقتی ۱۰ ثانیه هم تمام شد، اتاق جدید برای دور بعدی ساخته شود
+            else:
+                new_room = Room(capacity=0, game_time=120, game_start=0)
+                db.add(new_room)
+                db.commit()
 
         except Exception as e:
             db.rollback()
