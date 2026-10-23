@@ -786,7 +786,7 @@ async def master_timer_task():
                 db.add(room)
                 db.commit()
                 db.refresh(room)
-                continue
+               
 
             # فاز ۱: اگر تایمر اصلی (game_time) هنوز تمام نشده است
             if room.game_time > 0:
@@ -808,6 +808,8 @@ async def master_timer_task():
                 new_room = Room(capacity=0, game_time=120, game_start=0)
                 db.add(new_room)
                 db.commit()
+                db.refresh(new_room)
+
 
         except Exception as e:
             db.rollback()
