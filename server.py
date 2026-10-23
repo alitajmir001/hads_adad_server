@@ -807,7 +807,9 @@ async def master_timer_task():
                 
             
             elif FAZ_10==True:
-                elif room.game_start > 0:
+                
+                
+                if room.game_start > 0:
                     room.game_start -= 1
                     db.commit()
         
