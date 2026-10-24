@@ -135,8 +135,18 @@ class RoomParticipant(Base):
     room = relationship("Room")
     user = relationship("User")    
     
-    
-
+class Settings(Base):
+    __tablename__ = "settings"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)    
+    total_rounds_required=Column(Integer)  
+    status = Column(String)   
+       
+class Ansevers_of_rounds(Base):
+    __tablename__ = "ansevers_of_rounds"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)    
+    ansever_round=Column(Integer)  
+    number_of_round=Column(Integer) 
+    status = Column(String) 
 
     
 
@@ -658,17 +668,19 @@ async def distribute_prizes(winners_data: list, room_id: str, db: Session=Depend
 
     db.commit()
     print("All prizes distributed successfully.")
-def setup_room_rounds( room_id: str, total_rounds: int,db: Session=Depends(get_db)):
-    for r in range(1, total_rounds + 1):
-        # اینجا می‌توانی اعداد را از یک لیست مشخص یا تصادفی برداری
+def setup_room_rounds():
+    settings = db.query(Settings).order_by(Settings.id.desc()).first()
+    for r in range(1, settings.total_rounds_required):
         correct_val = random.randint(1, 100) 
-        new_round = RoomRound(
-            room_id=room_id, 
-            round_number=r, 
-            correct_answer=correct_val
-        )
+        new_round = Ansevers_of_rounds(
+        ansever_round=correct_val, 
+        number_of_round=r,   )
         db.add(new_round)
-    db.commit()
+        db.commit()
+    db.refresh()
+                    
+    
+    
 
 # --- API Endpoints ---
 
@@ -676,6 +688,9 @@ def setup_room_rounds( room_id: str, total_rounds: int,db: Session=Depends(get_d
 # room_id: Optional[int] = None
 @app.post("/join", response_model=ServerResponse)
 async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_db)):
+    settings = db.query(Settings).order_by(Settings.id.desc()).first()
+    if not settings:
+        return ServerResponse(message="تعداد راند ها مشخص نیست ", success=False)
     # بررسی وجود کاربر
     user = db.query(User).filter(User.id == user_data.user_id).first()
     if not user:
@@ -694,6 +709,7 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
             new_room = Room(capacity=0, game_time=120)
             db.add(new_room)
             db.commit()
+            asyncio.create_task(setup_room_rounds()) 
             db.refresh(new_room)
             room = new_room
             
@@ -719,7 +735,8 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
         existing_data = {
             "id": existing.id,
             "room_id": existing.room_id,
-            "user_id": existing.user_id
+            "user_id": existing.user_id,
+            "lenght_rounds":settings.total_rounds_required
         }
         return ServerResponse(message="شما قبلاً در این روم هستید", success=True, data=existing_data)
 
@@ -736,7 +753,8 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
         participant_data = {
             "id": new_participant.id,
             "room_id": new_participant.room_id,
-            "user_id": new_participant.user_id
+            "user_id": new_participant.user_id,
+            "lenght_rounds":settings.total_rounds_required
         }
         return ServerResponse(message="با موفقیت به روم پیوستید", success=True, data=participant_data)
 
@@ -785,14 +803,16 @@ async def master_timer_task():
         try:
             # پیدا کردن آخرین اتاق
             room = db.query(Room).order_by(Room.id.desc()).first()
+           
 
             if not room:
                 room = Room(capacity=0, game_time=120, game_start=0)
                 db.add(room)
                 db.commit()
+                asyncio.create_task(setup_room_rounds())             
                 db.refresh(room)
                 continue
-
+ 
             # فاز ۱: شمارش معکوس ۱۲۰ ثانیه (game_time)
             if FAZ_10==False:
                 if room.game_time > -1:
@@ -822,6 +842,7 @@ async def master_timer_task():
                      new_room = Room(capacity=0, game_time=120, game_start=0)
                      db.add(new_room)                  
                      db.commit()
+                     asyncio.create_task(setup_room_rounds()) 
                      FAZ_10=False
                
             db.refresh(room)
@@ -879,23 +900,17 @@ async def get_timer(db: Session = Depends(get_db)):
         
     
 
-@app.post("/game/submit-answer")
-async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = Depends(get_db)):
+@app.post("/submit-answer",response_model=ServerResponse)
+async def submit_answer(user_data: RoomParticipantSchema, db: Session = Depends(get_db)):
     room = db.query(Room).filter(Room.id == room_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="روم یافت نشد")
 
     # بررسی اتمام زمان (تایمر)
     time_limit = room.total_rounds_required 
-    elapsed_time = (datetime.now() - room.start_time).total_seconds() / 60
+   
     
-    if elapsed_time >= time_limit:
-        # اگر زمان تمام شده ولی هنوز وضعیت finished نشده، بازی را تمام کن
-        if room.status != "finished":
-            room.status = "finished"
-            db.commit()
-            await finalize_game_and_payout(room_id, db)
-        raise HTTPException(status_code=400, detail="زمان بازی تمام شده است")
+   
 
     participant = db.query(RoomParticipant).filter(
         RoomParticipant.room_id == room_id, 
@@ -904,7 +919,7 @@ async def submit_answer(answer: int, user_id: int, room_id: str, db: Session = D
 
     # ... (بخش‌های مربوط به چک کردن جواب درست) ...
 
-    if answer == correct_round_data.correct_answer:
+    if user_data.answer == correct_round_data.correct_answer:
         participant.current_progress += 1
         
         # بررسی اینکه آیا این نفر، نفر سوم برنده است؟
