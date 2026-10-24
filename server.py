@@ -159,7 +159,12 @@ class TokenResponse(BaseModel): # فقط یک بار و به عنوان BaseMode
     access_token: str
     refresh_token: str
     token_type: str
-
+class RoomRoundsSchema(BaseModel):
+    user_id: int
+    room_id: Optional[int] = None  # یا str بسته به نوع id در جدول Room
+    ansever: float
+    ansever_success_round:int
+    lenght_rounds:Optional[int] = None
 class UserRegister_phone_Schema(BaseModel):
     phone: str
     
@@ -900,46 +905,138 @@ async def get_timer(db: Session = Depends(get_db)):
         
     
 
-@app.post("/submit-answer",response_model=ServerResponse)
-async def submit_answer(user_data: RoomParticipantSchema, db: Session = Depends(get_db)):
-    room = db.query(Room).filter(Room.id == room_id).first()
-    if not room:
-        raise HTTPException(status_code=404, detail="روم یافت نشد")
+@app.post("/submit-answer", response_model=ServerResponse[RoomRoundsSchema])
+async def submit_answer(user_data: RoomRoundsSchema, db: Session = Depends(get_db)):
+    try:
+        # ۱. پیدا کردن اتاق (با قفل کردن رکورد برای جلوگیری از تداخل همزمان)
+        room = db.query(Room).filter(Room.id == user_data.room_id).with_for_update().first()
+        if not room:
+            return ServerResponse(success=False, message="روم یافت نشد")
 
-    # بررسی اتمام زمان (تایمر)
-    time_limit = room.total_rounds_required 
-   
-    
-   
+        if room.status == "finished":
+            return ServerResponse(success=False, message="این بازی به اتمام رسیده است")
+            
 
-    participant = db.query(RoomParticipant).filter(
-        RoomParticipant.room_id == room_id, 
-        RoomParticipant.user_id == user_id
-    ).first()
-
-    # ... (بخش‌های مربوط به چک کردن جواب درست) ...
-
-    if user_data.answer == correct_round_data.correct_answer:
-        participant.current_progress += 1
+        # ۲. پیدا کردن اطلاعات پاسخ راند
+        correct_round_info = db.query(Ansevers_of_rounds).filter(
+            Ansevers_of_rounds.number_of_round == user_data.ansever_success_round
+        ).first()
         
-        # بررسی اینکه آیا این نفر، نفر سوم برنده است؟
-        # ما باید تعداد کسانی که راندها را تمام کرده‌اند بشماریم
-        winners_count = db.query(RoomParticipant).filter(
-            RoomParticipant.room_id == room_id,
-            RoomParticipant.current_progress >= room.total_rounds_required
-        ).count()
+        if not correct_round_info:
+            
+            return ServerResponse(success=False, message="اطلاعات راند یافت نشد")
 
-        if winners_count >= 3:
-            # اگر تعداد برندگان به ۳ نفر رسید، بازی را تمام کن
-            room.status = "finished"
+        # ۳. پیدا کردن شرکت‌کننده
+        participant = db.query(RoomParticipant).filter(
+            RoomParticipant.user_id == user_data.user_id,
+            RoomParticipant.room_id == user_data.room_id
+        ).with_for_update().first()
+        
+        if not participant:
+           
+            return ServerResponse(success=False, message="شما در این مسابقه ثبت‌نام نکرده‌اید")
+
+        user = db.query(User).filter(User.id == user_data.user_id).with_for_update().first()
+        if not user:
+            return ServerResponse(success=False, message="کاربر یافت نشد")
+           
+
+        target_number = correct_round_info.ansever_round
+        user_guess = user_data.ansever
+
+        # ۴. مقایسه عدد کاربر با عدد هدف
+        if user_guess > target_number:
+            return ServerResponse(
+                success=False, 
+                message="عدد مورد نظر کوچکتر می‌باشد", 
+                data=user_data
+            )
+        elif user_guess < target_number:
+            return ServerResponse(
+                success=False, 
+                message="عدد مورد نظر بزرگتر می‌باشد", 
+                data=user_data
+            )
+        else:
+            # 🎯 کاربر درست حدس زده است!
+            participant.Number_of_rounds_won = (participant.Number_of_rounds_won or 0) + 1
+            participant.current_progress = (participant.current_progress or 0) + 1
+            
+            db.flush() # اعمال تغییرات موقت درون تراکنش
+
+            # ۵. بررسی اینکه آیا تمام راندهای لازم را تمام کرده است؟
+            if participant.Number_of_rounds_won >= user_data.lenght_rounds:
+                
+                # اگر هنوز به عنوان برنده نهایی ثبت نشده است
+                if participant.status != "winner":
+                    
+                    # شمارش دقیق برنده‌های فعلی (چون رکوردها قفل هستند، تداخلی رخ نمی‌دهد)
+                    winners_count = db.query(RoomParticipant).filter(
+                        RoomParticipant.room_id == user_data.room_id,
+                        RoomParticipant.status == "winner"
+                    ).count()
+
+                    if winners_count < 3:
+                        participant.status = "winner"
+                        rank = winners_count + 1  # رتبه دقیق ۱، ۲ یا ۳
+                        
+                        prize_pool = float(room.total_prize_pool or 0.0)
+                        
+                        # محاسبه جوایز و اضافه کردن به balance کاربر
+                        if rank == 1:
+                            reward = prize_pool * 0.60
+                            user.balance = float(user.balance or 0.0) + reward
+                            message = f"تبریک! شما نفر اول شدید و ۶۰ درصد از جایزه ({reward}) به موجودی شما اضافه شد."
+                            
+                        elif rank == 2:
+                            reward = prize_pool * 0.10
+                            user.balance = float(user.balance or 0.0) + reward
+                            message = f"تبریک! شما نفر دوم شدید و ۱۰ درصد از جایزه ({reward}) به موجودی شما اضافه شد."
+                            
+                        elif rank == 3:
+                            reward = prize_pool * 0.05
+                            user.balance = float(user.balance or 0.0) + reward
+                            message = f"تبریک! شما نفر سوم شدید و ۵ درصد از جایزه ({reward}) به موجودی شما اضافه شد."
+                        
+                        # اگر نفر سوم هم ثبت شد، روم را تمام کن
+                        if rank >= 3:
+                            room.status = "finished"
+
+                        db.commit() # ذخیره نهایی تمام تغییرات
+                        
+                        return ServerResponse(
+                            success=True, 
+                            message=message, 
+                            data=user_data
+                        )
+                    else:
+                        # اگر ظرفیت ۳ نفر پر شده باشد، کاربر راندها را تمام کرده اما جزو ۳ نفر نیست
+                        db.commit()
+                        return ServerResponse(
+                            success=True, 
+                            message="شما تمام راندها را تمام کردید، اما متأسفانه ظرفیت نفرات برتر تکمیل شده است.", 
+                            data=user_data
+                        )
+
+                db.commit()
+                return ServerResponse(
+                    success=True, 
+                    message="شما قبلاً برنده این مسابقه شده‌اید!", 
+                    data=user_data
+                )
+
             db.commit()
-            await finalize_game_and_payout(room_id, db)
-            return {"status": "game_over", "message": "تعداد برندگان تکمیل شد"}
+            # اگر این راند را برنده شده ولی هنوز کل راندهایش تمام نشده
+            return ServerResponse(
+                success=True, 
+                message="شما برنده این راند شدید! به راند بعدی بروید.", 
+                data=user_data
+            )
 
-        db.commit()
-        return {"status": "success", "next_round": participant.current_progress + 1}
-    
-    # ... (بقیه کد)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(call := f"خطای سرور: {str(e)}"))
+
 
 
 # سایر Endpointها مثل ساخت روم و مدیریت تایمر...
