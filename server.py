@@ -838,9 +838,9 @@ async def master_timer_task():
             if not room:
                 room = Room(capacity=0, game_time=120, game_start=0)
                 db.add(room)
-                db.commit()
-                await setup_room_rounds()            
+                db.commit()           
                 db.refresh(room)
+                asyncio.create_task(asyncio.to_thread(setup_room_rounds))  
                 continue
  
             # فاز ۱: شمارش معکوس ۱۲۰ ثانیه (game_time)
@@ -875,7 +875,7 @@ async def master_timer_task():
                      new_room = Room(capacity=0, game_time=120, game_start=0)
                      db.add(new_room)                  
                      db.commit()
-                     await setup_room_rounds() 
+                     asyncio.create_task(asyncio.to_thread(setup_room_rounds))   
                      FAZ_10=False
                
             db.refresh(room)
