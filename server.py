@@ -167,6 +167,8 @@ class RoomRoundsSchema(BaseModel):
     lenght_rounds:Optional[int] = None
 class UserRegister_phone_Schema(BaseModel):
     phone: str
+class SettingsSchema(BaseModel) :
+    total_rounds_required:int
     
 class UserRegister_info_Schema(BaseModel):
     phone:str
@@ -1069,8 +1071,25 @@ async def finalize_game_and_payout(room_id: str, db: Session= Depends(get_db)):
     # توزیع مبالغ (۶۰٪، ۱۰٪، ۵٪)
     if winners_data:
         await distribute_prizes(winners_data, room_id, db)
+# -------------------------------------------------------------------------------------------------------------------------------------
 
-
+@app.post("admin/fill_settings", response_model=ServerResponse)
+async def insert_settings(user_data: SettingsSchema,db: Session = Depends(get_db)):
+    # پیدا کردن آخرین اتاق
+    settings = db.query(Settings).order_by(Settings.id.desc()).first()
+    
+    if settings:
+        settings.total_rounds_required=user_data.total_rounds_required
+        
+        # دقت کنید که نام فیلدهای داخل این دیکشنری 
+        # باید دقیقاً با فیلدهای کلاس TimerResponse یکی باشد
+    else:
+        new_setting=Settings(total_rounds_required=user_data.total_rounds_required)
+        db.add(new_setting)
+    db.commit()
+    db.refresh()
+        
+    return ServerResponse(success= True,message="با موفقیت تعداد راند برای بازی ها ذخیره شد")
     
     # این بخش بسیار حیاتی است:
     # اول سعی می‌کند پورت را از محیط Render بگیرد، اگر نبود از 10000 استفاده می‌کند
