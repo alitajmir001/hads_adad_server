@@ -1073,7 +1073,7 @@ async def finalize_game_and_payout(room_id: str, db: Session= Depends(get_db)):
         await distribute_prizes(winners_data, room_id, db)
 # -------------------------------------------------------------------------------------------------------------------------------------
 
-@app.post("admin/fill_settings", response_model=ServerResponse)
+@app.post("/admin/fill_settings", response_model=ServerResponse)
 async def insert_settings(user_data: SettingsSchema,db: Session = Depends(get_db)):
     # پیدا کردن آخرین اتاق
     settings = db.query(Settings).order_by(Settings.id.desc()).first()
@@ -1087,7 +1087,6 @@ async def insert_settings(user_data: SettingsSchema,db: Session = Depends(get_db
         new_setting=Settings(total_rounds_required=user_data.total_rounds_required)
         db.add(new_setting)
     db.commit()
-    db.refresh()
         
     return ServerResponse(success= True,message="با موفقیت تعداد راند برای بازی ها ذخیره شد")
     
