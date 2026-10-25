@@ -839,7 +839,7 @@ async def master_timer_task():
                 room = Room(capacity=0, game_time=120, game_start=0)
                 db.add(room)
                 db.commit()
-                asyncio.create_task(setup_room_rounds())             
+                await setup_room_rounds()            
                 db.refresh(room)
                 continue
  
@@ -875,7 +875,7 @@ async def master_timer_task():
                      new_room = Room(capacity=0, game_time=120, game_start=0)
                      db.add(new_room)                  
                      db.commit()
-                     asyncio.create_task(setup_room_rounds()) 
+                     await setup_room_rounds() 
                      FAZ_10=False
                
             db.refresh(room)
