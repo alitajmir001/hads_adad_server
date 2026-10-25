@@ -675,16 +675,39 @@ async def distribute_prizes(winners_data: list, room_id: str, db: Session=Depend
 
     db.commit()
     print("All prizes distributed successfully.")
+import random
+
 def setup_room_rounds():
-    settings = db.query(Settings).order_by(Settings.id.desc()).first()
-    for r in range(1, settings.total_rounds_required):
-        correct_val = random.randint(1, 100) 
-        new_round = Ansevers_of_rounds(
-        ansever_round=correct_val, 
-        number_of_round=r,   )
-        db.add(new_round)
+    db = SessionLocal()
+    try:
+        # ۱. پاک کردن تمام راندهای قبلی جدول Ansevers_of_rounds
+        db.query(Ansevers_of_rounds).delete()
         db.commit()
-    db.refresh()
+
+        # ۲. خواندن تنظیمات جدید
+        settings = db.query(Settings).order_by(Settings.id.desc()).first()
+        if not settings:
+            return  # اگر تنظیماتی وجود نداشت، خارج شو
+
+        # ۳. ساختن راندهای جدید بر اساس تعداد مورد نیاز در تنظیمات
+        # نکته: اگر می‌خواهید از 1 تا total_rounds_required باشد (شامل خود عدد) از range(1, settings.total_rounds_required + 1) استفاده کنید
+        for r in range(1, settings.total_rounds_required + 1):
+            correct_val = random.randint(1, 100) 
+            new_round = Ansevers_of_rounds(
+                ansever_round=correct_val, 
+                number_of_round=r
+            )
+            db.add(new_round)
+        
+        # ثبت نهایی تغییرات در دیتابیس
+        db.commit()
+        
+    except Exception as e:
+        db.rollback()
+        print(f"Error in setup_room_rounds: {e}")
+    finally:
+        db.close()
+
                     
     
     
@@ -811,6 +834,7 @@ async def master_timer_task():
             # پیدا کردن آخرین اتاق
             room = db.query(Room).order_by(Room.id.desc()).first()
            
+
             if not room:
                 room = Room(capacity=0, game_time=120, game_start=0)
                 db.add(room)
@@ -820,34 +844,50 @@ async def master_timer_task():
                 continue
  
             # فاز ۱: شمارش معکوس ۱۲۰ ثانیه (game_time)
-            if FAZ_10 == False:
+            if FAZ_10==False:
                 if room.game_time > -1:
                     room.game_time -= 1
                     db.commit()
+                    
+                
+            
+            # فاز ۲: وقتی ۱۲۰ ثانیه تمام شد، اگر تایمر ۱۰ ثانیه‌ای هنوز مقداردهی نشده، آن را ۱۰ کن
                 elif room.game_time <= -1:
                     room.game_start = 10
                     db.commit()
-                    FAZ_10 = True
+                    
+                    FAZ_10=True
+                    continue
                 
-            # فاز ۲: شمارش معکوس ۱۰ ثانیه (game_start)
-            elif FAZ_10 == True:
+            
+            elif FAZ_10==True:
+                
+                
                 if room.game_start > -1:
                     room.game_start -= 1
                     db.commit()
-                else:
-                    # وقتی ۱۰ ثانیه تمام شد، روم جدید ساخته شود
-                    new_room = Room(capacity=0, game_time=120, game_start=0)
-                    db.add(new_room)                  
-                    db.commit()
-                    asyncio.create_task(setup_room_rounds()) 
-                    FAZ_10 = False
                     
+        
+                
+
+            # فاز ۴: وقتی ۱۰ ثانیه هم تمام شد، روم جدید ساخته شود
+                else:
+                     new_room = Room(capacity=0, game_time=120, game_start=0)
+                     db.add(new_room)                  
+                     db.commit()
+                     asyncio.create_task(setup_room_rounds()) 
+                     FAZ_10=False
+               
+            db.refresh(room)
+                    
+    
+           
+
         except Exception as e:
             db.rollback()
             print(f"Timer Error: {e}")
         finally:
-            db.close()
-  
+            db.close() 
 
 
 
