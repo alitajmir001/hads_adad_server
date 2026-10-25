@@ -811,7 +811,6 @@ async def master_timer_task():
             # پیدا کردن آخرین اتاق
             room = db.query(Room).order_by(Room.id.desc()).first()
            
-
             if not room:
                 room = Room(capacity=0, game_time=120, game_start=0)
                 db.add(room)
@@ -821,47 +820,34 @@ async def master_timer_task():
                 continue
  
             # فاز ۱: شمارش معکوس ۱۲۰ ثانیه (game_time)
-            if FAZ_10==False:
+            if FAZ_10 == False:
                 if room.game_time > -1:
                     room.game_time -= 1
                     db.commit()
-                
-            
-            # فاز ۲: وقتی ۱۲۰ ثانیه تمام شد، اگر تایمر ۱۰ ثانیه‌ای هنوز مقداردهی نشده، آن را ۱۰ کن
                 elif room.game_time <= -1:
                     room.game_start = 10
                     db.commit()
-                    FAZ_10=True
-                    continue
+                    FAZ_10 = True
                 
-            
-            elif FAZ_10==True:
-                
-                
+            # فاز ۲: شمارش معکوس ۱۰ ثانیه (game_start)
+            elif FAZ_10 == True:
                 if room.game_start > -1:
                     room.game_start -= 1
                     db.commit()
-        
-                
-
-            # فاز ۴: وقتی ۱۰ ثانیه هم تمام شد، روم جدید ساخته شود
                 else:
-                     new_room = Room(capacity=0, game_time=120, game_start=0)
-                     db.add(new_room)                  
-                     db.commit()
-                     asyncio.create_task(setup_room_rounds()) 
-                     FAZ_10=False
-               
-            db.refresh(room)
+                    # وقتی ۱۰ ثانیه تمام شد، روم جدید ساخته شود
+                    new_room = Room(capacity=0, game_time=120, game_start=0)
+                    db.add(new_room)                  
+                    db.commit()
+                    asyncio.create_task(setup_room_rounds()) 
+                    FAZ_10 = False
                     
-    
-           
-
         except Exception as e:
             db.rollback()
             print(f"Timer Error: {e}")
         finally:
-            db.close()   
+            db.close()
+  
 
 
 
