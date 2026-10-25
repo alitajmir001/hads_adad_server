@@ -739,7 +739,7 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
             new_room = Room(capacity=0, game_time=120)
             db.add(new_room)
             db.commit()
-            asyncio.create_task(setup_room_rounds()) 
+            asyncio.create_task(asyncio.to_thread(setup_room_rounds)) 
             db.refresh(new_room)
             room = new_room
             
