@@ -1103,20 +1103,32 @@ async def finalize_game_and_payout(room_id: str, db: Session= Depends(get_db)):
 
 @app.post("/admin/fill_settings", response_model=ServerResponse)
 async def insert_settings(user_data: SettingsSchema,db: Session = Depends(get_db)):
-    # پیدا کردن آخرین اتاق
-    settings = db.query(Settings).order_by(Settings.id.desc()).first()
+    try:
+        settings = db.query(Settings).order_by(Settings.id.desc()).first()
     
-    if settings:
-        settings.total_rounds_required=user_data.total_rounds_required
+        if settings:
+            settings.total_rounds_required=user_data.total_rounds_required
+            db.commit()
+        
         
         # دقت کنید که نام فیلدهای داخل این دیکشنری 
         # باید دقیقاً با فیلدهای کلاس TimerResponse یکی باشد
-    else:
-        new_setting=Settings(total_rounds_required=user_data.total_rounds_required)
-        db.add(new_setting)
-    db.commit()
+        else:
+            new_setting=Settings(total_rounds_required=user_data.total_rounds_required)
+            db.add(new_setting)
+            db.refresh()
+            db.commit()
+        return ServerResponse(success= True,message="با موفقیت تعداد راند برای بازی ها ذخیره شد")
+    
         
-    return ServerResponse(success= True,message="با موفقیت تعداد راند برای بازی ها ذخیره شد")
+    except Exception as e:
+        db.rollback()
+        return ServerResponse(success= False,message="مشکلی پیش آمده")
+        
+    
+         # پیدا کردن آخرین اتاق
+    
+   
     
     # این بخش بسیار حیاتی است:
     # اول سعی می‌کند پورت را از محیط Render بگیرد، اگر نبود از 10000 استفاده می‌کند
