@@ -935,8 +935,8 @@ async def get_timer(db: Session = Depends(get_db)):
         
     
 
-@app.post("/submit-answer", response_model=ServerResponse[RoomParticipant])
-async def submit_answer(user_data: RoomParticipant, db: Session = Depends(get_db)):
+@app.post("/submit-answer", response_model=ServerResponse[RoomParticipantSchema])
+async def submit_answer(user_data: RoomParticipantSchema, db: Session = Depends(get_db)):
     try:
         # ۱. پیدا کردن اتاق (با قفل کردن رکورد برای جلوگیری از تداخل همزمان)
         room = db.query(Room).filter(Room.id == user_data.room_id).with_for_update().first()
