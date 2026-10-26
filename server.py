@@ -156,7 +156,7 @@ class RoomParticipantSchema(BaseModel):
     room_id: Optional[int] = None  # یا str بسته به نوع id در جدول Room
     status: Optional[str] = "active"
     Number_of_rounds_won:int
-    ansever: float:Optional[int] = None
+    ansever: Optional[float] = None
     lenght_rounds:Optional[int] = None
 class TokenResponse(BaseModel): # فقط یک بار و به عنوان BaseModel
     access_token: str
