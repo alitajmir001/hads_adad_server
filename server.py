@@ -134,7 +134,13 @@ class RoomParticipant(Base):
     correct_answer = Column(Integer)
     room = relationship("Room")
     user = relationship("User")    
-    
+class RoomParticipantSchema(BaseModel):
+    user_id: int
+    room_id: Optional[int] = None  # یا str بسته به نوع id در جدول Room
+    status: Optional[str] = "active"
+    Number_of_rounds_won:int
+    ansever: Optional[float] = None
+    lenght_rounds:Optional[int] = None    
 class Settings(Base):
     __tablename__ = "settings"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)    
@@ -151,13 +157,7 @@ class Ansevers_of_rounds(Base):
     
 
 # --- ۲. بخش اسکیماها (Pydantic Schemas) ---
-class RoomParticipantSchema(BaseModel):
-    user_id: int
-    room_id: Optional[int] = None  # یا str بسته به نوع id در جدول Room
-    status: Optional[str] = "active"
-    Number_of_rounds_won:int
-    ansever: Optional[float] = None
-    lenght_rounds:Optional[int] = None
+
 class TokenResponse(BaseModel): # فقط یک بار و به عنوان BaseModel
     access_token: str
     refresh_token: str
