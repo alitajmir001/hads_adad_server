@@ -155,16 +155,18 @@ class RoomParticipantSchema(BaseModel):
     user_id: int
     room_id: Optional[int] = None  # یا str بسته به نوع id در جدول Room
     status: Optional[str] = "active"
+    Number_of_rounds_won:int
+    ansever: float:Optional[int] = None
+    lenght_rounds:Optional[int] = None
 class TokenResponse(BaseModel): # فقط یک بار و به عنوان BaseModel
     access_token: str
     refresh_token: str
     token_type: str
 class RoomRoundsSchema(BaseModel):
     user_id: int
-    room_id: Optional[int] = None  # یا str بسته به نوع id در جدول Room
-    ansever: float
+    room_id: Optional[int] = None  # یا str بسته به نوع id در جدول Room    
     ansever_success_round:int
-    lenght_rounds:Optional[int] = None
+    
 class UserRegister_phone_Schema(BaseModel):
     phone: str
 class SettingsSchema(BaseModel) :
@@ -933,8 +935,8 @@ async def get_timer(db: Session = Depends(get_db)):
         
     
 
-@app.post("/submit-answer", response_model=ServerResponse[RoomRoundsSchema])
-async def submit_answer(user_data: RoomRoundsSchema, db: Session = Depends(get_db)):
+@app.post("/submit-answer", response_model=ServerResponse[RoomParticipant])
+async def submit_answer(user_data: RoomParticipant, db: Session = Depends(get_db)):
     try:
         # ۱. پیدا کردن اتاق (با قفل کردن رکورد برای جلوگیری از تداخل همزمان)
         room = db.query(Room).filter(Room.id == user_data.room_id).with_for_update().first()
@@ -947,7 +949,7 @@ async def submit_answer(user_data: RoomRoundsSchema, db: Session = Depends(get_d
 
         # ۲. پیدا کردن اطلاعات پاسخ راند
         correct_round_info = db.query(Ansevers_of_rounds).filter(
-            Ansevers_of_rounds.number_of_round == user_data.ansever_success_round
+            Ansevers_of_rounds.number_of_round == user_data.Number_of_rounds_won
         ).first()
         
         if not correct_round_info:
@@ -988,7 +990,7 @@ async def submit_answer(user_data: RoomRoundsSchema, db: Session = Depends(get_d
         else:
             # 🎯 کاربر درست حدس زده است!
             participant.Number_of_rounds_won = (participant.Number_of_rounds_won or 0) + 1
-            participant.current_progress = (participant.current_progress or 0) + 1
+            # participant.current_progress = (participant.current_progress or 0) + 1
             
             db.flush() # اعمال تغییرات موقت درون تراکنش
 
@@ -1035,7 +1037,7 @@ async def submit_answer(user_data: RoomRoundsSchema, db: Session = Depends(get_d
                         return ServerResponse(
                             success=True, 
                             message=message, 
-                            data=user_data
+                            data=participant
                         )
                     else:
                         # اگر ظرفیت ۳ نفر پر شده باشد، کاربر راندها را تمام کرده اما جزو ۳ نفر نیست
@@ -1043,14 +1045,14 @@ async def submit_answer(user_data: RoomRoundsSchema, db: Session = Depends(get_d
                         return ServerResponse(
                             success=True, 
                             message="شما تمام راندها را تمام کردید، اما متأسفانه ظرفیت نفرات برتر تکمیل شده است.", 
-                            data=user_data
+                            data=participant
                         )
 
                 db.commit()
                 return ServerResponse(
                     success=True, 
                     message="شما قبلاً برنده این مسابقه شده‌اید!", 
-                    data=user_data
+                    data=participant
                 )
 
             db.commit()
@@ -1058,7 +1060,7 @@ async def submit_answer(user_data: RoomRoundsSchema, db: Session = Depends(get_d
             return ServerResponse(
                 success=True, 
                 message="شما برنده این راند شدید! به راند بعدی بروید.", 
-                data=user_data
+                data=participant
             )
 
     except Exception as e:
