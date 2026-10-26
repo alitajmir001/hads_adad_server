@@ -700,6 +700,7 @@ def setup_room_rounds():
                 number_of_round=r
             )
             db.add(new_round)
+            db.refresh(new_round)
         
         # ثبت نهایی تغییرات در دیتابیس
         db.commit()
@@ -763,6 +764,7 @@ async def join_room(user_data: RoomParticipantSchema, db: Session = Depends(get_
     ).first()
 
     if existing:
+        
         # تبدیل به دیکشنری ساده، نه شیء خام دیتابیس
         existing_data = {
             "id": existing.id,
