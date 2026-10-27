@@ -680,19 +680,19 @@ async def distribute_prizes(winners_data: list, room_id: str, db: Session=Depend
 import random
 
 def setup_room_rounds():
+    # ایجاد یک Session کاملاً جدید و مستقل برای این Thread
     db = SessionLocal()
     try:
-        # ۱. پاک کردن تمام راندهای قبلی جدول Ansevers_of_rounds
+        # ۱. پاک کردن راندهای قبلی
         db.query(Ansevers_of_rounds).delete()
-        db.commit()
-
-        # ۲. خواندن تنظیمات جدید
+        
+        # ۲. خواندن تنظیمات
         settings = db.query(Settings).order_by(Settings.id.desc()).first()
         if not settings:
-            return  # اگر تنظیماتی وجود نداشت، خارج شو
+            print("Setup failed: No settings found.")
+            return
 
-        # ۳. ساختن راندهای جدید بر اساس تعداد مورد نیاز در تنظیمات
-        # نکته: اگر می‌خواهید از 1 تا total_rounds_required باشد (شامل خود عدد) از range(1, settings.total_rounds_required + 1) استفاده کنید
+        # ۳. ساخت راندهای جدید
         for r in range(1, settings.total_rounds_required + 1):
             correct_val = random.randint(1, 100) 
             new_round = Ansevers_of_rounds(
@@ -700,16 +700,16 @@ def setup_room_rounds():
                 number_of_round=r
             )
             db.add(new_round)
-            db.refresh(new_round)
         
-        # ثبت نهایی تغییرات در دیتابیس
+        # ۴. Commit نهایی برای تمام راندهای ساخته شده (یک بار برای همه)
         db.commit()
-        
+        print("Rounds setup successfully.")
+
     except Exception as e:
         db.rollback()
         print(f"Error in setup_room_rounds: {e}")
     finally:
-        db.close()
+        db.close() # حتماً Session بسته شود
 
                     
     
