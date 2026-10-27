@@ -693,7 +693,7 @@ def setup_room_rounds():
             return
 
         # ۳. ساخت راندهای جدید
-        for r in range(1, settings.total_rounds_required + 1):
+        for r in range(0, settings.total_rounds_required ):
             correct_val = random.randint(1, 100) 
             new_round = Ansevers_of_rounds(
                 ansever_round=correct_val, 
