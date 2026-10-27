@@ -138,7 +138,7 @@ class RoomParticipantSchema(BaseModel):
     user_id: int
     room_id: Optional[int] = None  # یا str بسته به نوع id در جدول Room
     status: Optional[str] = "active"
-    Number_of_rounds_won:int
+    Number_of_rounds_won:Optional[int] = None
     ansever: Optional[float] = None
     lenght_rounds:Optional[int] = None    
 class Settings(Base):
