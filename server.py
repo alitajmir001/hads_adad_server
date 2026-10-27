@@ -994,7 +994,7 @@ async def submit_answer(user_data: RoomParticipantSchema, db: Session = Depends(
             participant.Number_of_rounds_won = (participant.Number_of_rounds_won or 0) + 1
             # participant.current_progress = (participant.current_progress or 0) + 1
             
-            db.flush() # اعمال تغییرات موقت درون تراکنش
+            db.commit() # اعمال تغییرات موقت درون تراکنش
 
             # ۵. بررسی اینکه آیا تمام راندهای لازم را تمام کرده است؟
             if participant.Number_of_rounds_won >= user_data.lenght_rounds:
