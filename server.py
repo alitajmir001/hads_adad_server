@@ -1111,6 +1111,7 @@ async def insert_settings(user_data: SettingsSchema,db: Session = Depends(get_db
         if settings:
             settings.total_rounds_required=user_data.total_rounds_required
             db.commit()
+            db.refresh(settings)
         
         
         # دقت کنید که نام فیلدهای داخل این دیکشنری 
@@ -1118,8 +1119,9 @@ async def insert_settings(user_data: SettingsSchema,db: Session = Depends(get_db
         else:
             new_setting=Settings(total_rounds_required=user_data.total_rounds_required)
             db.add(new_setting)
-            db.refresh()
+            
             db.commit()
+            db.refresh(new_setting)
         return ServerResponse(success= True,message="با موفقیت تعداد راند برای بازی ها ذخیره شد")
     
         
